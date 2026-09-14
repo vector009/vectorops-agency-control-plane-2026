@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SESSION_COOKIE = "vectorops_session";
 const isProduction = process.env.NODE_ENV === "production";
+const authAttempts = new Map<string, { count: number; resetAt: number }>();
 type Session = { access_token: string; refresh_token: string };
 type Profile = { user_id: string; role: "admin" | "client"; client_id: string | null; full_name: string | null };
 
@@ -42,6 +43,8 @@ function clearSession(response: Response) {
   response.setHeader("Set-Cookie", `${SESSION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${isProduction ? "; Secure" : ""}`);
 }
 
+function authRateLimit(request: Request, response: Response) { const key = request.ip || request.headers["x-forwarded-for"]?.toString() || "unknown"; const now = Date.now(); const current = authAttempts.get(key); if (!current || current.resetAt <= now) { authAttempts.set(key, { count: 1, resetAt: now + 15 * 60 * 1000 }); return true; } if (current.count >= 10) { response.setHeader("Retry-After", String(Math.ceil((current.resetAt - now) / 1000))); response.status(429).json({ ok: false, error: "Too many attempts. Please wait 15 minutes and try again." }); return false; } current.count += 1; return true; }
+
 function genericAuthFailure(response: Response) {
   return response.status(401).json({ ok: false, error: "Incorrect password." });
 }
@@ -57,6 +60,7 @@ async function signInWithIdentity(email: string, password: string) {
 }
 
 async function adminLogin(request: Request, response: Response) {
+  if (!authRateLimit(request, response)) return;
   const { password } = request.body as { password?: unknown };
   const { adminEmail } = config();
   if (typeof password !== "string" || password.length === 0 || !adminEmail) return genericAuthFailure(response);
@@ -73,12 +77,15 @@ async function adminLogin(request: Request, response: Response) {
 }
 
 async function clientLogin(request: Request, response: Response) {
+  if (!authRateLimit(request, response)) return;
   const { slug, password } = request.body as { slug?: unknown; password?: unknown };
   if (typeof slug !== "string" || typeof password !== "string" || !slug || !password) return genericAuthFailure(response);
   try {
     const service = createServiceClient();
     const portal = await service.from("client_portal_config").select("client_id,slug,portal_title").eq("slug", slug.toLowerCase()).limit(1).maybeSingle();
     if (portal.error || !portal.data) return response.status(401).json({ ok: false, error: "You don't have access to this portal." });
+    const clientRecord = await service.from("clients").select("id,status").eq("id", portal.data.client_id).limit(1).maybeSingle();
+    if (clientRecord.error || !clientRecord.data || clientRecord.data.status === "churned" || clientRecord.data.status === "archived") return response.status(403).json({ ok: false, error: "This client portal is currently unavailable." });
     const profileResult = await service.from("profiles").select("user_id,role,client_id,full_name").eq("client_id", portal.data.client_id).eq("role", "client").limit(1).maybeSingle();
     if (profileResult.error || !profileResult.data) return response.status(401).json({ ok: false, error: "You don't have access to this portal." });
     const authUser = await service.auth.admin.getUserById(profileResult.data.user_id);
@@ -234,6 +241,7 @@ async function adminOverview(request: Request, response: Response) {
 export function createApiApp() {
   const app = express();
   app.disable("x-powered-by");
+  app.use((_request, response, next) => { response.setHeader("Cache-Control", "no-store"); next(); });
   app.use(express.json({ limit: "16kb" }));
   app.post("/api/auth/admin", adminLogin);
   app.post("/api/auth/client", clientLogin);
