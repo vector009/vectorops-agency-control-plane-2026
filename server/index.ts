@@ -188,6 +188,29 @@ async function provisionClient(request: Request, response: Response) {
   }
 }
 
+const adminDataMap: Record<string, { table: string; columns: string }> = {
+  clients: { table: "clients", columns: "id,company_name,contact_name,email,status,created_at" }, invoices: { table: "invoices", columns: "id,invoice_number,total_amount,amount_paid,status,due_date" }, workflows: { table: "workflows", columns: "id,workflow_name,status,desired_state,actual_state,last_success_at,last_failure_at" }, n8n_instances: { table: "n8n_instances", columns: "id,instance_name,base_url,hosting_type,status,last_sync_status,last_verified_at" }, calendar_events: { table: "calendar_events", columns: "id,title,event_type,status,starts_at,ends_at,location" }, tasks: { table: "tasks", columns: "id,title,status,priority,due_at,completed_at" }, support_tickets: { table: "support_tickets", columns: "id,ticket_number,subject,status,priority,category,created_at" }, business_events: { table: "business_events", columns: "id,event_type,event_value,currency,occurred_at,created_at" }, audit_logs: { table: "audit_logs", columns: "id,actor_role,action,table_name,record_id,created_at" },
+};
+
+async function adminContext(request: Request) {
+  const raw = readCookie(request, SESSION_COOKIE);
+  if (!raw) return null;
+  try { const session = JSON.parse(raw) as Session; const { data, error } = await createAnonClient().auth.getUser(session.access_token); if (error || !data.user) return null; const service = createServiceClient(); const profile = await profileForUser(service, data.user.id); return profile?.role === "admin" ? { service } : null; } catch { return null; }
+}
+
+async function adminData(request: Request, response: Response) {
+  const context = await adminContext(request); if (!context) return response.status(401).json({ ok: false, error: "Not authenticated." });
+  const definition = adminDataMap[String(request.params.resource || "")]; if (!definition) return response.status(404).json({ ok: false, error: "Unknown data resource." });
+  const result = await context.service.from(definition.table as never).select(definition.columns).order("created_at", { ascending: false }).limit(50);
+  return response.status(result.error ? 400 : 200).json({ ok: !result.error, rows: result.data || [], error: result.error?.message || null });
+}
+
+async function adminOverview(request: Request, response: Response) {
+  const context = await adminContext(request); if (!context) return response.status(401).json({ ok: false, error: "Not authenticated." }); const service = context.service;
+  const [clients, templates, workflows, instances, subscriptions, invoices] = await Promise.all([service.from("clients").select("id,company_name,contact_name,email,status,created_at").order("created_at", { ascending: false }).limit(50), service.from("automation_templates").select("id", { count: "exact", head: true }), service.from("workflows").select("id", { count: "exact", head: true }), service.from("n8n_instances").select("id", { count: "exact", head: true }), service.from("subscriptions").select("monthly_amount,status").eq("status", "active").limit(200), service.from("invoices").select("total_amount,amount_paid,status").in("status", ["due", "partially_paid", "overdue"]).limit(200)]);
+  return response.json({ ok: true, clients: clients.data || [], templates: templates.count || 0, workflows: workflows.count || 0, instances: instances.count || 0, mrr: (subscriptions.data || []).reduce((sum, row) => sum + Number(row.monthly_amount || 0), 0), overdue: (invoices.data || []).reduce((sum, row) => sum + Math.max(Number(row.total_amount || 0) - Number(row.amount_paid || 0), 0), 0), error: clients.error?.message || null });
+}
+
 export function createApiApp() {
   const app = express();
   app.disable("x-powered-by");
@@ -198,6 +221,8 @@ export function createApiApp() {
   app.get("/api/auth/client-access/:slug", clientAccess);
   app.get("/api/portal/:slug/summary", portalSummary);
   app.post("/api/admin/clients", provisionClient);
+  app.get("/api/admin/overview", adminOverview);
+  app.get("/api/admin/data/:resource", adminData);
   app.post("/api/auth/logout", (_request, response) => { clearSession(response); response.json({ ok: true }); });
   return app;
 }
