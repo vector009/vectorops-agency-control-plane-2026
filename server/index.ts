@@ -127,7 +127,68 @@ async function clientAccess(request: Request, response: Response) {
   }
 }
 
-export function createApp() {
+async function portalSummary(request: Request, response: Response) {
+  const raw = readCookie(request, SESSION_COOKIE);
+  const slug = String(request.params.slug || "").toLowerCase();
+  if (!raw || !slug) return response.status(401).json({ ok: false, error: "You don't have access to this portal." });
+  try {
+    const session = JSON.parse(raw) as Session;
+    const { data: auth, error: authError } = await createAnonClient().auth.getUser(session.access_token);
+    if (authError || !auth.user) return response.status(401).json({ ok: false, error: "You don't have access to this portal." });
+    const service = createServiceClient();
+    const profile = await profileForUser(service, auth.user.id);
+    if (!profile || profile.role !== "client" || !profile.client_id) return response.status(403).json({ ok: false, error: "You don't have access to this portal." });
+    const portal = await service.from("client_portal_config").select("client_id,slug,portal_title,enabled_modules,primary_color,accent_color").eq("client_id", profile.client_id).eq("slug", slug).limit(1).maybeSingle();
+    if (portal.error || !portal.data) return response.status(403).json({ ok: false, error: "You don't have access to this portal." });
+    const [client, workflows, invoices, tasks, tickets] = await Promise.all([
+      service.from("clients").select("id,company_name,contact_name,status,email").eq("id", profile.client_id).limit(1).maybeSingle(),
+      service.from("workflows").select("id,workflow_name,status,actual_state,last_success_at,last_failure_at").eq("client_id", profile.client_id).limit(8),
+      service.from("invoices").select("id,invoice_number,total_amount,amount_paid,status,due_date").eq("client_id", profile.client_id).order("due_date", { ascending: false }).limit(8),
+      service.from("tasks").select("id,title,status,priority,due_at,completed_at").eq("client_id", profile.client_id).order("due_at", { ascending: true }).limit(8),
+      service.from("support_tickets").select("id,ticket_number,subject,status,priority,created_at").eq("client_id", profile.client_id).order("created_at", { ascending: false }).limit(8),
+    ]);
+    return response.json({ ok: true, portal: portal.data, client: client.data, workflows: workflows.data || [], invoices: invoices.data || [], tasks: tasks.data || [], tickets: tickets.data || [] });
+  } catch {
+    return response.status(503).json({ ok: false, error: "We couldn't load your portal right now. Please try again." });
+  }
+}
+
+async function provisionClient(request: Request, response: Response) {
+  const raw = readCookie(request, SESSION_COOKIE);
+  if (!raw) return response.status(401).json({ ok: false, error: "Not authenticated." });
+  let authUserId: string | null = null;
+  let clientId: string | null = null;
+  try {
+    const session = JSON.parse(raw) as Session;
+    const { data: auth, error: authError } = await createAnonClient().auth.getUser(session.access_token);
+    if (authError || !auth.user) return response.status(401).json({ ok: false, error: "Not authenticated." });
+    const service = createServiceClient();
+    const actor = await profileForUser(service, auth.user.id);
+    if (!actor || actor.role !== "admin") return response.status(403).json({ ok: false, error: "Administrator access required." });
+    const body = request.body as { company_name?: string; contact_name?: string; email?: string; phone?: string; slug?: string; portal_title?: string; client_email?: string; client_password?: string };
+    const companyName = body.company_name?.trim(); const clientEmail = body.client_email?.trim().toLowerCase(); const password = body.client_password; const slug = body.slug?.trim().toLowerCase();
+    if (!companyName || !clientEmail || !password || !slug || !/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(slug)) return response.status(400).json({ ok: false, error: "Company, client email, password, and a valid portal slug are required." });
+    const created = await service.from("clients").insert({ company_name: companyName, contact_name: body.contact_name?.trim() || null, email: body.email?.trim().toLowerCase() || clientEmail, phone: body.phone?.trim() || null, status: "pending", created_by_user_id: auth.user.id }).select("id,company_name,email,status").limit(1).single();
+    if (created.error || !created.data) return response.status(400).json({ ok: false, error: created.error?.message || "Unable to create client." });
+    clientId = created.data.id;
+    const createdAuth = await service.auth.admin.createUser({ email: clientEmail, password, email_confirm: true, user_metadata: { company_name: companyName, role: "client" } });
+    if (createdAuth.error || !createdAuth.data.user) throw new Error(createdAuth.error?.message || "Unable to create client login.");
+    authUserId = createdAuth.data.user.id;
+    const profile = await service.from("profiles").insert({ user_id: authUserId, role: "client", client_id: clientId, full_name: body.contact_name?.trim() || companyName }).select("user_id").limit(1).single();
+    if (profile.error) throw new Error(profile.error.message);
+    const portal = await service.from("client_portal_config").insert({ client_id: clientId, slug, portal_title: body.portal_title?.trim() || `${companyName} Portal` }).select("slug,portal_title").limit(1).single();
+    if (portal.error || !portal.data) throw new Error(portal.error?.message || "Unable to create portal.");
+    await service.from("audit_logs").insert({ actor_user_id: auth.user.id, actor_role: "admin", client_id: clientId, action: "client.provisioned", table_name: "clients", record_id: clientId, metadata: { slug } });
+    return response.status(201).json({ ok: true, client: created.data, portal: portal.data, login_email: clientEmail });
+  } catch (error) {
+    const service = createServiceClient();
+    if (authUserId) await service.auth.admin.deleteUser(authUserId);
+    if (clientId) await service.from("clients").delete().eq("id", clientId);
+    return response.status(400).json({ ok: false, error: error instanceof Error ? error.message : "Unable to provision client." });
+  }
+}
+
+export function createApiApp() {
   const app = express();
   app.disable("x-powered-by");
   app.use(express.json({ limit: "16kb" }));
@@ -135,7 +196,15 @@ export function createApp() {
   app.post("/api/auth/client", clientLogin);
   app.get("/api/auth/me", currentSession);
   app.get("/api/auth/client-access/:slug", clientAccess);
+  app.get("/api/portal/:slug/summary", portalSummary);
+  app.post("/api/admin/clients", provisionClient);
   app.post("/api/auth/logout", (_request, response) => { clearSession(response); response.json({ ok: true }); });
+  return app;
+}
+
+export function createApp() {
+  const app = express();
+  app.use(createApiApp());
   const staticPath = isProduction ? path.resolve(__dirname, "public") : path.resolve(__dirname, "..", "dist", "public");
   app.use(express.static(staticPath));
   app.get("*", (_request, response) => response.sendFile(path.join(staticPath, "index.html")));
@@ -149,4 +218,5 @@ export async function startServer() {
   return server;
 }
 
-if (process.env.NODE_ENV !== "test" && !process.env.VITEST) startServer().catch((error) => { console.error("Unable to start VectorOps server", error); process.exitCode = 1; });
+const invokedDirectly = process.argv[1]?.endsWith("dist/index.js") || process.argv[1]?.endsWith("server/index.ts");
+if (invokedDirectly && process.env.NODE_ENV !== "test" && !process.env.VITEST) startServer().catch((error) => { console.error("Unable to start VectorOps server", error); process.exitCode = 1; });
