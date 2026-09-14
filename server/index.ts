@@ -138,19 +138,39 @@ async function portalSummary(request: Request, response: Response) {
     const service = createServiceClient();
     const profile = await profileForUser(service, auth.user.id);
     if (!profile || profile.role !== "client" || !profile.client_id) return response.status(403).json({ ok: false, error: "You don't have access to this portal." });
-    const portal = await service.from("client_portal_config").select("client_id,slug,portal_title,enabled_modules,primary_color,accent_color").eq("client_id", profile.client_id).eq("slug", slug).limit(1).maybeSingle();
+    const portal = await service.from("client_portal_config").select("client_id,slug,portal_title,logo_url,primary_color,accent_color,enabled_modules,dashboard_config,kpi_config,terminology,client_settings_schema").eq("client_id", profile.client_id).eq("slug", slug).limit(1).maybeSingle();
     if (portal.error || !portal.data) return response.status(403).json({ ok: false, error: "You don't have access to this portal." });
-    const [client, workflows, invoices, tasks, tickets] = await Promise.all([
+    const [client, workflows, invoices, tasks, tickets, controls, reports, metrics] = await Promise.all([
       service.from("clients").select("id,company_name,contact_name,status,email").eq("id", profile.client_id).limit(1).maybeSingle(),
-      service.from("workflows").select("id,workflow_name,status,actual_state,last_success_at,last_failure_at").eq("client_id", profile.client_id).limit(8),
+      service.from("workflows").select("id,workflow_name,status,desired_state,actual_state,last_success_at,last_failure_at,client_visible").eq("client_id", profile.client_id).eq("client_visible", true).limit(8),
       service.from("invoices").select("id,invoice_number,total_amount,amount_paid,status,due_date").eq("client_id", profile.client_id).order("due_date", { ascending: false }).limit(8),
       service.from("tasks").select("id,title,status,priority,due_at,completed_at").eq("client_id", profile.client_id).order("due_at", { ascending: true }).limit(8),
       service.from("support_tickets").select("id,ticket_number,subject,status,priority,created_at").eq("client_id", profile.client_id).order("created_at", { ascending: false }).limit(8),
+      service.from("client_automation_controls").select("id,workflow_id,desired_state,actual_state,sync_status,last_control_error,updated_at").eq("client_id", profile.client_id).limit(20),
+      service.from("client_reports").select("id,report_type,period_start,period_end,title,summary,metrics,insights,generated_at").eq("client_id", profile.client_id).eq("visible_to_client", true).order("generated_at", { ascending: false }).limit(6),
+      service.from("business_events").select("id,event_type,event_value,currency,occurred_at").eq("client_id", profile.client_id).order("occurred_at", { ascending: false }).limit(12),
     ]);
-    return response.json({ ok: true, portal: portal.data, client: client.data, workflows: workflows.data || [], invoices: invoices.data || [], tasks: tasks.data || [], tickets: tickets.data || [] });
+    return response.json({ ok: true, portal: portal.data, client: client.data, workflows: workflows.data || [], invoices: invoices.data || [], tasks: tasks.data || [], tickets: tickets.data || [], controls: controls.data || [], reports: reports.data || [], metrics: metrics.data || [] });
   } catch {
     return response.status(503).json({ ok: false, error: "We couldn't load your portal right now. Please try again." });
   }
+}
+
+
+async function updateClientAutomationState(request: Request, response: Response) {
+  const raw = readCookie(request, SESSION_COOKIE); const slug = String(request.params.slug || "").toLowerCase(); const workflowId = String(request.params.workflowId || "");
+  if (!raw || !slug || !workflowId) return response.status(401).json({ ok: false, error: "Not authenticated." });
+  try {
+    const session = JSON.parse(raw) as Session; const { data: auth, error: authError } = await createAnonClient().auth.getUser(session.access_token); if (authError || !auth.user) return response.status(401).json({ ok: false, error: "Not authenticated." });
+    const service = createServiceClient(); const profile = await profileForUser(service, auth.user.id); if (!profile || profile.role !== "client" || !profile.client_id) return response.status(403).json({ ok: false, error: "Client access required." });
+    const portal = await service.from("client_portal_config").select("client_id").eq("client_id", profile.client_id).eq("slug", slug).limit(1).maybeSingle(); if (!portal.data) return response.status(403).json({ ok: false, error: "Portal access denied." });
+    const desired = (request.body as { desired_state?: string }).desired_state; if (desired !== "running" && desired !== "paused") return response.status(400).json({ ok: false, error: "Desired state must be running or paused." });
+    const workflow = await service.from("workflows").select("id,client_id,n8n_instance_id,actual_state").eq("id", workflowId).eq("client_id", profile.client_id).eq("client_visible", true).limit(1).maybeSingle(); if (!workflow.data) return response.status(404).json({ ok: false, error: "Automation not found." });
+    const control = await service.from("client_automation_controls").upsert({ workflow_id: workflowId, client_id: profile.client_id, n8n_instance_id: workflow.data.n8n_instance_id, desired_state: desired, actual_state: workflow.data.actual_state, sync_status: "synchronizing", requested_by_user_id: auth.user.id, requested_at: new Date().toISOString() }, { onConflict: "workflow_id" }).select("id,workflow_id,desired_state,actual_state,sync_status,last_control_error").limit(1).single();
+    if (control.error) return response.status(400).json({ ok: false, error: control.error.message });
+    await service.from("workflows").update({ desired_state: desired }).eq("id", workflowId).eq("client_id", profile.client_id);
+    return response.json({ ok: true, control: control.data, message: "Your request is queued for secure n8n synchronization." });
+  } catch { return response.status(503).json({ ok: false, error: "Unable to update automation state right now." }); }
 }
 
 async function provisionClient(request: Request, response: Response) {
@@ -221,6 +241,7 @@ export function createApiApp() {
   app.get("/api/auth/client-access/:slug", clientAccess);
   app.get("/api/portal/:slug/summary", portalSummary);
   app.post("/api/admin/clients", provisionClient);
+  app.post("/api/portal/:slug/workflows/:workflowId/state", updateClientAutomationState);
   app.get("/api/admin/overview", adminOverview);
   app.get("/api/admin/data/:resource", adminData);
   app.post("/api/auth/logout", (_request, response) => { clearSession(response); response.json({ ok: true }); });
