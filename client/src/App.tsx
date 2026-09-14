@@ -1,42 +1,51 @@
+import { useEffect, useState } from "react";
+import { Route, Switch, useLocation } from "wouter";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/NotFound";
-import { Route, Switch } from "wouter";
-import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import Home from "./pages/Home";
-
+import { Home, CommandCenter, LoginPanel, PortalLogin } from "./pages/Home";
+import NotFound from "./pages/NotFound";
 
 function Router() {
+  const [, navigate] = useLocation();
+  const [loginMode, setLoginMode] = useState<"admin" | "client" | null>(null);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLoginMode(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
-    <Switch>
-      <Route path={"/"} component={Home} />
-      <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
-      <Route component={NotFound} />
-    </Switch>
+    <>
+      <Switch>
+        <Route path="/">
+          <Home onAdmin={() => setLoginMode("admin")} onClient={() => setLoginMode("client")} />
+        </Route>
+        <Route path="/admin">
+          <CommandCenter onLogout={() => { navigate("/"); setLoginMode(null); }} />
+        </Route>
+        <Route path="/portal/:slug">
+          {(params) => <PortalLogin slug={params.slug} onBack={() => navigate("/")} />}
+        </Route>
+        <Route path="/404" component={NotFound} />
+        <Route component={NotFound} />
+      </Switch>
+      {loginMode === "admin" && <LoginPanel mode="admin" onClose={() => setLoginMode(null)} />}
+      {loginMode === "client" && <LoginPanel mode="client" onClose={() => setLoginMode(null)} />}
+    </>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
-function App() {
+export default function App() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+    <ThemeProvider defaultTheme="dark" switchable>
+      <TooltipProvider>
+        <Toaster />
+        <Router />
+      </TooltipProvider>
+    </ThemeProvider>
   );
 }
-
-export default App;

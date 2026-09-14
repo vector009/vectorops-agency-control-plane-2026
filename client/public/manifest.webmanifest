@@ -1,0 +1,10 @@
+{
+  "name": "VectorOps — Agency Operating System",
+  "short_name": "VectorOps",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#12161e",
+  "theme_color": "#12161e",
+  "description": "The agency operating system for clients, automations, infrastructure, and business results.",
+  "icons": []
+}
