@@ -1,0 +1,8 @@
+{
+  "name": "VectorOps",
+  "description": "Agency operating system for clients, automations, infrastructure, and business results.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

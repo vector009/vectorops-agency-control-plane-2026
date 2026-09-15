@@ -3,7 +3,8 @@ import { Route, Switch, useLocation } from "wouter";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { Home, CommandCenter, LoginPanel, PortalLogin } from "./pages/Home";
+import { ClientPortal } from "./pages/ClientPortal";
+import { Home, CommandCenter, LoginPanel } from "./pages/Home";
 import NotFound from "./pages/NotFound";
 
 function Router() {
@@ -27,9 +28,7 @@ function Router() {
         <Route path="/admin">
           <CommandCenter onLogout={() => { navigate("/"); setLoginMode(null); }} />
         </Route>
-        <Route path="/portal/:slug">
-          {(params) => <PortalLogin slug={params.slug} onBack={() => navigate("/")} />}
-        </Route>
+        <Route path="/portal/:slug" component={ClientPortal} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

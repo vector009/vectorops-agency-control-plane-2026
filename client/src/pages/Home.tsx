@@ -1,33 +1,421 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
-import { Activity, ArrowUpRight, BarChart3, BriefcaseBusiness, Building2, CalendarDays, Check, ChevronRight, CircleDollarSign, Command, Database, Eye, FileText, FolderKanban, LayoutDashboard, LockKeyhole, LogOut, Menu, Moon, Network, Plus, Search, Settings2, ShieldCheck, Sparkles, Sun, Ticket, Trash2, Users, X, Zap } from "lucide-react";
+import {
+  Activity,
+  ArrowUpRight,
+  CalendarDays,
+  Check,
+  ChevronRight,
+  CircleDollarSign,
+  Command,
+  Database,
+  LayoutDashboard,
+  LockKeyhole,
+  LogOut,
+  Menu,
+  Moon,
+  Network,
+  Plus,
+  Search,
+  Settings2,
+  ShieldCheck,
+  Sun,
+  Ticket,
+  Users,
+  X,
+  Zap,
+} from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
+import type { Client } from "@/types/vectorops";
+import { OverviewView } from "@/components/admin/OverviewView";
+import { ClientsView } from "@/components/admin/ClientsView";
+import { MoneyView } from "@/components/admin/MoneyView";
+import { AutomationsView } from "@/components/admin/AutomationsView";
+import { InfrastructureView } from "@/components/admin/InfrastructureView";
+import { SupportView } from "@/components/admin/SupportView";
+import { CalendarView } from "@/components/admin/CalendarView";
+import { TasksView } from "@/components/admin/TasksView";
+import { SettingsView } from "@/components/admin/SettingsView";
+import { OnboardingWizard } from "@/components/admin/OnboardingWizard";
 
-type Client = { id: string; company_name: string; contact_name: string | null; email: string | null; status: string; created_at: string };
-type Overview = { clients: Client[]; templates: number; workflows: number; instances: number; mrr: number; overdue: number; loading: boolean; error: string | null };
-const nav = [["Overview", LayoutDashboard], ["Clients", Users], ["Automations", Zap], ["Money", CircleDollarSign], ["Calendar", CalendarDays], ["Tasks", Check], ["Support", Ticket], ["Infrastructure", Network], ["Activity", Activity], ["Audit", ShieldCheck], ["Settings", Settings2]] as const;
+const nav = [
+  ["Overview", LayoutDashboard],
+  ["Clients", Users],
+  ["Automations", Zap],
+  ["Money", CircleDollarSign],
+  ["Calendar", CalendarDays],
+  ["Tasks", Check],
+  ["Support", Ticket],
+  ["Infrastructure", Network],
+  ["Settings", Settings2],
+] as const;
 
-function ThemeToggle() { const { theme, toggleTheme } = useTheme(); return <button className="icon-button" onClick={toggleTheme} aria-label="Toggle day and night mode">{theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}</button>; }
-function Brand({ compact = false }: { compact?: boolean }) { return <div className="brand"><div className="brand-mark"><span /><span /><span /></div>{!compact && <div><div className="brand-name">VECTOR<span>OPS</span></div><div className="brand-sub">Business operating system</div></div>}</div>; }
-function StatusDot({ tone = "green" }: { tone?: string }) { return <span className={`status-dot ${tone}`} />; }
-function Stat({ label, value, detail, icon: Icon, tone = "default" }: { label: string; value: string; detail: string; icon: typeof Activity; tone?: string }) { return <div className={`stat neumorph ${tone}`}><div className="stat-top"><span>{label}</span><Icon size={17} /></div><strong>{value}</strong><small>{detail}</small></div>; }
-function Empty({ title, body }: { title: string; body: string }) { return <div className="empty"><div className="empty-icon"><Database size={18} /></div><div><strong>{title}</strong><p>{body}</p></div></div>; }
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  return (
+    <button className="icon-button" onClick={toggleTheme} aria-label="Toggle day and night mode">
+      {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+    </button>
+  );
+}
 
-export function Home({ onAdmin, onClient }: { onAdmin: () => void; onClient: () => void }) { return <div className="entry-page"><header className="entry-nav"><Brand /><div className="entry-actions"><span className="eyebrow hide-mobile"><StatusDot /> SYSTEM READY</span><ThemeToggle /><button className="text-button" onClick={onClient}>Client portal <ArrowUpRight size={15} /></button></div></header><main className="entry-main"><section className="hero-copy"><div className="eyebrow"><span className="signal" /> CONTROL PLANE / 01</div><h1>Your business,<br /><em>under one</em> operating system.</h1><p className="hero-lede">Manage the business plane, automation control plane, and execution health from one precise command center.</p><div className="hero-actions"><Button className="primary-cta" onClick={onAdmin}><LockKeyhole size={16} /> Enter admin console <ChevronRight size={16} /></Button><button className="secondary-cta" onClick={onClient}>Client login <ArrowUpRight size={16} /></button></div><div className="trust-row"><ShieldCheck size={16} /><span>Supabase-authenticated</span><span className="separator" /><span>Tenant isolated</span><span className="separator" /><span>Audit ready</span></div></section><section className="system-visual"><div className="visual-header"><span>VECTOROPS / THREE-PLANE SYSTEM MAP</span><span className="live-pill"><StatusDot /> LIVE SURFACE</span></div><div className="orbit"><div className="orbit-ring ring-one" /><div className="orbit-ring ring-two" /><div className="core"><div className="core-grid"><Command size={25} /><span>OPS</span></div><small>COMMAND CENTER</small></div>{[["BUSINESS", "01", "top"], ["CONTROL", "02", "right"], ["EXECUTION", "03", "bottom"], ["CLIENT", "04", "left"]].map(([name, no, pos]) => <div className={`node node-${pos}`} key={name}><span className="node-no">{no}</span><strong>{name}</strong><small><StatusDot /> synchronized</small></div>)}</div><div className="visual-footer"><span><span className="metric-line" /> BUSINESS / CONTROL / EXECUTION</span><span>01 — 04</span></div></section></main><footer className="entry-footer"><span>© 2026 VectorOps</span><span>Built for businesses that operate with clarity.</span><span className="footer-links"><a href="#security">Security</a><a href="#status">Status</a></span></footer></div>; }
+function Brand({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className="brand">
+      <div className="brand-mark">
+        <span />
+        <span />
+        <span />
+      </div>
+      {!compact && (
+        <div>
+          <div className="brand-name">
+            VECTOR<span>OPS</span>
+          </div>
+          <div className="brand-sub">Agency operating system</div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClose: () => void }) { const [, navigate] = useLocation(); const [password, setPassword] = useState(""); const [slug, setSlug] = useState(""); const [busy, setBusy] = useState(false); const submit = async (e: React.FormEvent) => { e.preventDefault(); setBusy(true); try { const response = await fetch(`/api/auth/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(mode === "admin" ? { password } : { slug, password }) }); const result = await response.json() as { ok?: boolean; error?: string; slug?: string }; if (!response.ok || !result.ok) { toast.error(result.error || "We couldn't verify your access."); return; } onClose(); navigate(mode === "admin" ? "/admin" : `/portal/${result.slug || slug}`); } catch { toast.error("We couldn't verify your access."); } finally { setBusy(false); } }; return <div className="modal-backdrop" onMouseDown={onClose}><div className="login-panel neumorph" onMouseDown={e => e.stopPropagation()}><button className="close-button" onClick={onClose} aria-label="Close"><X size={18} /></button><div className="login-symbol"><LockKeyhole size={21} /></div><div className="eyebrow">SECURE ACCESS / {mode === "admin" ? "ADMIN" : "CLIENT"}</div><h2>{mode === "admin" ? "Enter the command center." : "Open your portal."}</h2><p>{mode === "admin" ? "Password-only access for your business operations." : "Enter your tenant slug and password to continue."}</p><form onSubmit={submit}>{mode === "client" && <label>Portal slug<Input value={slug} onChange={e => setSlug(e.target.value)} placeholder="your-company" required /></label>}<label>Password<Input value={password} onChange={e => setPassword(e.target.value)} type="password" placeholder="••••••••••••" required /></label><Button className="primary-cta full" type="submit" disabled={busy}>{busy ? "Verifying access..." : mode === "admin" ? "Enter admin console" : "Enter portal"}<ChevronRight size={16} /></Button></form><div className="login-note"><ShieldCheck size={15} /> Credentials are verified server-side. Nothing is written to browser storage.</div></div></div>; }
+function StatusDot({ tone = "green" }: { tone?: string }) {
+  return <span className={`status-dot ${tone}`} />;
+}
 
-function PortalList({ title, items, primary, secondary, onToggle }: { title: string; items: Record<string, unknown>[]; primary: string; secondary: string; onToggle?: (item: Record<string, unknown>) => void }) { return <section className="portal-list panel neumorph"><div className="panel-head"><div><span className="eyebrow">CLIENT WORKSPACE</span><h3>{title}</h3></div><span className="attention-count">{items.length}</span></div>{items.length ? <div className="portal-list-items">{items.slice(0, 8).map((item, index) => <div className="portal-list-item" key={String(item.id || index)}><div><strong>{String(item.workflow_name || item[primary] || "Untitled")}</strong><small>{String(item[secondary] || "—")}</small></div><div className="portal-item-actions"><span className="status-badge"><StatusDot tone={String(item.actual_state || item.status || "").includes("running") || String(item.status || "").includes("paid") || String(item.status || "").includes("open") ? "green" : "amber"} />{String(item.actual_state || item.status || item.priority || "tracked")}</span>{onToggle && <button className="portal-control" onClick={() => onToggle(item)}>{String(item.desired_state || item.actual_state) === "paused" ? "Resume" : "Pause"}</button>}</div></div>)}</div> : <p className="portal-muted">No records available yet.</p>}</section>; }
+export function Home({ onAdmin, onClient }: { onAdmin: () => void; onClient: () => void }) {
+  return (
+    <div className="entry-page">
+      <header className="entry-nav">
+        <Brand />
+        <div className="entry-actions">
+          <span className="eyebrow hide-mobile">
+            <StatusDot /> SYSTEM READY
+          </span>
+          <ThemeToggle />
+          <button className="text-button" onClick={onClient}>
+            Client portal <ArrowUpRight size={15} />
+          </button>
+        </div>
+      </header>
+      <main className="entry-main">
+        <section className="hero-copy">
+          <div className="eyebrow">
+            <span className="signal" /> CONTROL PLANE / 01
+          </div>
+          <h1>
+            Your agency,
+            <br />
+            <em>under one</em> operating system.
+          </h1>
+          <p className="hero-lede">
+            Manage the business plane, automation control plane, and execution health from one precise command center.
+          </p>
+          <div className="hero-actions">
+            <Button className="primary-cta" onClick={onAdmin}>
+              <LockKeyhole size={16} /> Enter admin console <ChevronRight size={16} />
+            </Button>
+            <button className="secondary-cta" onClick={onClient}>
+              Client login <ArrowUpRight size={16} />
+            </button>
+          </div>
+          <div className="trust-row">
+            <ShieldCheck size={16} />
+            <span>Master Auth verified</span>
+            <span className="separator" />
+            <span>Multi-tenant isolated</span>
+            <span className="separator" />
+            <span>Audit ready</span>
+          </div>
+        </section>
+        <section className="system-visual">
+          <div className="visual-header">
+            <span>VECTOROPS / THREE-PLANE SYSTEM MAP</span>
+            <span className="live-pill">
+              <StatusDot /> LIVE SURFACE
+            </span>
+          </div>
+          <div className="orbit">
+            <div className="orbit-ring ring-one" />
+            <div className="orbit-ring ring-two" />
+            <div className="core">
+              <div className="core-grid">
+                <Command size={25} />
+                <span>OPS</span>
+              </div>
+              <small>COMMAND CENTER</small>
+            </div>
+            {[
+              ["BUSINESS", "01", "top"],
+              ["CONTROL", "02", "right"],
+              ["EXECUTION", "03", "bottom"],
+              ["CLIENT", "04", "left"],
+            ].map(([name, no, pos]) => (
+              <div className={`node node-${pos}`} key={name}>
+                <span className="node-no">{no}</span>
+                <strong>{name}</strong>
+                <small>
+                  <StatusDot /> synchronized
+                </small>
+              </div>
+            ))}
+          </div>
+          <div className="visual-footer">
+            <span>
+              <span className="metric-line" /> BUSINESS / CONTROL / EXECUTION
+            </span>
+            <span>01 — 04</span>
+          </div>
+        </section>
+      </main>
+      <footer className="entry-footer">
+        <span>© 2026 VectorOps Control Plane</span>
+        <span>Three-plane architecture with Section 51 partial payments and Section 54 safe churn.</span>
+        <span className="footer-links">
+          <a href="#security">Security</a>
+          <a href="#status">Status</a>
+        </span>
+      </footer>
+    </div>
+  );
+}
 
-export function PortalLogin({ slug, onBack }: { slug: string; onBack: () => void }) { const [state, setState] = useState<"checking" | "authorized" | "denied">("checking"); const [summary, setSummary] = useState<{ company_name?: string; portal?: { portal_title?: string; logo_url?: string; primary_color?: string; accent_color?: string; enabled_modules?: string[] }; workflows: Record<string, unknown>[]; invoices: Record<string, unknown>[]; tasks: Record<string, unknown>[]; tickets: Record<string, unknown>[]; reports: Record<string, unknown>[]; metrics: Record<string, unknown>[] }>({ workflows: [], invoices: [], tasks: [], tickets: [], reports: [], metrics: [] }); const load = () => fetch(`/api/portal/${encodeURIComponent(slug)}/summary`, { credentials: "include" }).then(async response => { if (!response.ok) throw new Error("denied"); const body = await response.json(); setSummary({ portal: body.portal, company_name: body.client?.company_name, workflows: body.workflows || [], invoices: body.invoices || [], tasks: body.tasks || [], tickets: body.tickets || [], reports: body.reports || [], metrics: body.metrics || [] }); setState("authorized"); }).catch(() => setState("denied")); useEffect(() => { load(); }, [slug]); const toggleAutomation = async (item: Record<string, unknown>) => { const desired_state = String(item.desired_state || item.actual_state) === "paused" ? "running" : "paused"; const response = await fetch(`/api/portal/${encodeURIComponent(slug)}/workflows/${String(item.id)}/state`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ desired_state }) }); const result = await response.json(); if (!response.ok || !result.ok) toast.error(result.error || "Automation control failed."); else { toast.success("Request queued for secure synchronization."); load(); } }; const title = summary.portal?.portal_title || summary.company_name || slug.replaceAll("-", " "); return <div className="portal-page"><Brand /><div className="portal-shell"><div className="portal-card neumorph"><div className="login-symbol">{state === "authorized" ? <Eye size={21} /> : <LockKeyhole size={21} />}</div><div className="eyebrow">CLIENT PORTAL / {summary.portal?.enabled_modules?.length || 0} MODULES</div><h2>{title}</h2>{state === "checking" ? <p>Verifying your tenant session...</p> : state === "authorized" ? <><p>Your personalized business workspace is active. All records are scoped to your organization.</p><div className="portal-metrics"><span><strong>{summary.workflows.length}</strong><small>Automations</small></span><span><strong>{summary.invoices.length}</strong><small>Invoices</small></span><span><strong>{summary.tasks.length}</strong><small>Tasks</small></span><span><strong>{summary.tickets.length}</strong><small>Tickets</small></span></div></> : <p>You don't have access to this portal. Sign in with the correct tenant password.</p>}<Button className="primary-cta full" onClick={onBack}>{state === "authorized" ? "Return to entry" : "Back to secure access"} <ArrowUpRight size={16} /></Button></div>{state === "authorized" && <div className="portal-data-grid"><PortalList title="Automations & controls" items={summary.workflows} primary="workflow_name" secondary="actual_state" onToggle={toggleAutomation} /><PortalList title="Billing" items={summary.invoices} primary="invoice_number" secondary="total_amount" /><PortalList title="Tasks" items={summary.tasks} primary="title" secondary="due_at" /><PortalList title="Support" items={summary.tickets} primary="subject" secondary="ticket_number" />{summary.reports.length > 0 && <PortalList title="Reports" items={summary.reports} primary="title" secondary="period_end" />}</div>}</div></div>; }
+export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClose: () => void }) {
+  const [, navigate] = useLocation();
+  const [email, setEmail] = useState(mode === "admin" ? "admin@vectorops.ai" : "sarah@apexdental.com");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
 
-function OnboardingModal({ onClose, onDone }: { onClose: () => void; onDone: () => void }) { const [form, setForm] = useState({ company_name: "", contact_name: "", email: "", phone: "", client_email: "", client_password: "", slug: "", portal_title: "" }); const [busy, setBusy] = useState(false); const update = (key: keyof typeof form, value: string) => setForm(v => ({ ...v, [key]: value })); const submit = async (event: React.FormEvent) => { event.preventDefault(); setBusy(true); try { const response = await fetch("/api/admin/clients", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) }); const result = await response.json(); if (!response.ok || !result.ok) { toast.error(result.error || "Onboarding failed."); return; } toast.success(`Client onboarded. Portal: /portal/${result.portal.slug}`); onDone(); } catch { toast.error("Unable to complete onboarding."); } finally { setBusy(false); } }; return <div className="modal-backdrop" onMouseDown={onClose}><div className="onboarding-modal panel neumorph" onMouseDown={e => e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">CLIENT ONBOARDING / 01</div><h2>Create configured tenant</h2><p>Identity, portal, and client authentication are created together.</p></div><button className="close-button" onClick={onClose}><X size={18} /></button></div><form className="onboarding-grid" onSubmit={submit}><label>Company name<Input value={form.company_name} onChange={e => update("company_name", e.target.value)} required /></label><label>Contact name<Input value={form.contact_name} onChange={e => update("contact_name", e.target.value)} /></label><label>Business email<Input type="email" value={form.email} onChange={e => update("email", e.target.value)} /></label><label>Phone<Input value={form.phone} onChange={e => update("phone", e.target.value)} /></label><label>Client login email<Input type="email" value={form.client_email} onChange={e => update("client_email", e.target.value)} required /></label><label>Client password<Input type="password" value={form.client_password} onChange={e => update("client_password", e.target.value)} required /></label><label>Portal slug<Input placeholder="acme-dental" value={form.slug} onChange={e => update("slug", e.target.value)} required /></label><label>Portal title<Input placeholder="Acme Dental Portal" value={form.portal_title} onChange={e => update("portal_title", e.target.value)} /></label><div className="modal-actions"><button type="button" className="secondary-cta" onClick={onClose}>Cancel</button><Button className="primary-cta" type="submit" disabled={busy}>{busy ? "Creating tenant..." : "Create client & portal"}<ArrowUpRight size={16} /></Button></div></form></div></div>; }
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/auth/${mode}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ email, password }),
+      });
+      const result = (await response.json()) as { ok?: boolean; error?: string; slug?: string };
+      if (!response.ok || !result.ok) {
+        toast.error(result.error || "Invalid email or password.");
+        return;
+      }
+      toast.success(mode === "admin" ? "Admin authentication confirmed." : "Client authentication confirmed.");
+      onClose();
+      navigate(mode === "admin" ? "/admin" : `/portal/${result.slug}`);
+    } catch {
+      toast.error("Authentication service unavailable.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
-function RecordModal({ active, onClose, onDone }: { active: string; onClose: () => void; onDone: () => void }) { const map: Record<string, { resource: string; fields: [string,string,string][] }> = { Money: { resource: "invoices", fields: [["client_id","Client ID","text"],["invoice_number","Invoice number","text"],["total_amount","Total amount","number"],["due_date","Due date","date"],["description","Description","text"]] }, Automations: { resource: "workflows", fields: [["client_id","Client ID","text"],["n8n_instance_id","n8n instance ID","text"],["n8n_workflow_id","n8n workflow ID","text"],["workflow_name","Workflow name","text"],["business_name","Business name","text"],["business_job","Business job","text"]] }, Infrastructure: { resource: "n8n_instances", fields: [["instance_name","Instance name","text"],["base_url","Base URL","url"],["hosting_type","Hosting type","text"],["n8n_api_secret_ref","Vault secret reference","text"]] }, Calendar: { resource: "calendar_events", fields: [["client_id","Client ID","text"],["title","Event title","text"],["event_type","Event type","text"],["starts_at","Starts at","datetime-local"],["ends_at","Ends at","datetime-local"]] }, Tasks: { resource: "tasks", fields: [["client_id","Client ID","text"],["title","Task title","text"],["description","Description","text"],["due_at","Due at","datetime-local"]] }, Support: { resource: "support_tickets", fields: [["client_id","Client ID","text"],["ticket_number","Ticket number","text"],["subject","Subject","text"],["category","Category","text"]] } }; const config=map[active] || map.Tasks; const [form,setForm]=useState<Record<string,string>>({}); const [busy,setBusy]=useState(false); const submit=async(e:React.FormEvent)=>{e.preventDefault();setBusy(true);try{const r=await fetch("/api/admin/data/"+config.resource,{method:"POST",credentials:"include",headers:{"Content-Type":"application/json"},body:JSON.stringify(form)});const b=await r.json();if(!r.ok||!b.ok){toast.error(b.error||"Could not create record.");return}toast.success("Record created successfully.");onDone()}catch{toast.error("Could not create record.")}finally{setBusy(false)}};return <div className="modal-backdrop" onMouseDown={onClose}><div className="onboarding-modal panel neumorph" onMouseDown={e=>e.stopPropagation()}><div className="modal-head"><div><div className="eyebrow">{active.toUpperCase()} / WRITE ACTION</div><h2>Create {active === "Money" ? "invoice" : active === "Automations" ? "workflow" : active === "Infrastructure" ? "n8n instance" : active === "Tasks" ? "task" : active === "Support" ? "support ticket" : "record"}</h2><p>Saved through the protected admin API and recorded in audit history.</p></div><button className="close-button" onClick={onClose}><X size={18}/></button></div><form className="onboarding-grid" onSubmit={submit}>{config.fields.map(([key,label,type])=><label key={key}>{label}<Input type={type} value={form[key]||""} onChange={e=>setForm(v=>({...v,[key]:e.target.value}))} required={key !== "description" && key !== "business_job"}/></label>)}<div className="modal-actions"><button type="button" className="secondary-cta" onClick={onClose}>Cancel</button><Button className="primary-cta" type="submit" disabled={busy}>{busy?"Saving...":"Create record"}<ArrowUpRight size={16}/></Button></div></form></div></div>; }
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <div className="login-panel panel neumorph" onMouseDown={(e) => e.stopPropagation()}>
+        <button className="close-button" onClick={onClose} aria-label="Close">
+          <X size={18} />
+        </button>
+        <div className="login-symbol">
+          <LockKeyhole size={21} />
+        </div>
+        <div className="eyebrow">
+          <span className="signal" /> {mode === "admin" ? "OPERATOR AUTHENTICATION" : "CLIENT PORTAL AUTHENTICATION"}
+        </div>
+        <h2>{mode === "admin" ? "LOGIN AS ADMIN" : "CLIENT PORTAL LOGIN"}</h2>
+        <p>
+          {mode === "admin"
+            ? "Sign in with your verified Supabase administrator credentials."
+            : "Sign in with your tenant account email and password."}
+        </p>
+        <form onSubmit={submit}>
+          <label>
+            Email
+            <Input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              placeholder={mode === "admin" ? "admin@vectorops.ai" : "sarah@apexdental.com"}
+              required
+              autoFocus
+            />
+          </label>
+          <label>
+            Password
+            <Input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              placeholder="••••••••••••"
+              required
+            />
+          </label>
+          <Button className="primary-cta full" type="submit" disabled={busy} style={{ marginTop: "12px" }}>
+            {busy ? "Authenticating..." : "LOGIN"}
+            <ChevronRight size={16} />
+          </Button>
+        </form>
+        <div className="login-note">
+          <ShieldCheck size={15} /> Supabase Auth & Role-Based Access Control verified.
+        </div>
+      </div>
+    </div>
+  );
+}
 
-function ModuleView({ active, onBack, onLogout }: { active: string; onBack: () => void; onLogout: () => void }) { const [rows, setRows] = useState<Record<string, unknown>[]>([]); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [showForm, setShowForm] = useState(false); const tableMap: Record<string, string> = { Clients: "clients", Money: "invoices", Automations: "workflows", Infrastructure: "n8n_instances", Calendar: "calendar_events", Tasks: "tasks", Support: "support_tickets", Activity: "business_events", Audit: "audit_logs" }; const table = tableMap[active]; useEffect(() => { let mounted = true; setLoading(true); fetch(`/api/admin/data/${table}`, { credentials: "include" }).then(async response => ({ response, body: await response.json() })).then(({ response, body }) => { if (!mounted) return; setRows(body.rows || []); setError(response.ok ? body.error || null : body.error || "Unable to load this module."); setLoading(false); }).catch(() => mounted && (setError("Unable to load this module."), setLoading(false))); return () => { mounted = false; }; }, [active, table]); const labelMap: Record<string, string> = { Money: "invoices", Automations: "workflows", Infrastructure: "n8n instances", Calendar: "events", Tasks: "tasks", Support: "tickets", Activity: "business events", Audit: "audit events" }; const primaryKey: Record<string, string> = { Clients: "company_name", Money: "invoice_number", Automations: "workflow_name", Infrastructure: "instance_name", Calendar: "title", Tasks: "title", Support: "subject", Activity: "event_type", Audit: "action" }; const secondaryKey: Record<string, string> = { Clients: "email", Money: "total_amount", Automations: "actual_state", Infrastructure: "base_url", Calendar: "location", Tasks: "priority", Support: "ticket_number", Activity: "event_value", Audit: "table_name" }; const dateKey: Record<string, string> = { Money: "due_date", Calendar: "starts_at", Tasks: "due_at", Activity: "occurred_at", Audit: "created_at", Support: "created_at", Clients: "created_at", Automations: "last_success_at", Infrastructure: "last_verified_at" }; const value = (row: Record<string, unknown>, key?: string) => !key || row[key] == null ? "—" : String(row[key]); const deleteClient = async (id: string, name: string) => { if (!window.confirm(`Delete ${name}? This permanently removes its portal, financial records, workflows, tasks, tickets, and client login.`)) return; try { const response = await fetch(`/api/admin/clients/${id}`, { method: "DELETE", credentials: "include" }); const result = await response.json(); if (!response.ok || !result.ok) { toast.error(result.error || "Unable to delete client."); return; } toast.success(`${name} deleted.`); window.location.reload(); } catch { toast.error("Unable to delete client."); } }; return <div className="module-page"><div className="module-head"><div><button className="back-link" onClick={onBack}>← Overview</button><div className="eyebrow"><span className="signal" /> YOUR BUSINESS / {active.toUpperCase()}</div><h1>{active}</h1><p>Live business-plane records connected to the verified architecture schema.</p></div><div className="top-actions"><ThemeToggle /><Button className="soft-button" onClick={() => setShowForm(true)}><Plus size={15}/> Add record</Button><button className="logout" onClick={onLogout}><LogOut size={15} /> Sign out</button></div></div>{error && <div className="notice"><Database size={16} /><span>{error}</span></div>}<section className="panel neumorph data-panel"><div className="panel-head"><div><span className="eyebrow">LIVE RECORDS</span><h2>{loading ? "Loading..." : `${rows.length} ${labelMap[active] || active.toLowerCase()}`}</h2></div><button className="panel-action" onClick={() => window.location.reload()}>Refresh <Activity size={14} /></button></div>{rows.length === 0 && !loading ? <Empty title={`No ${labelMap[active] || active.toLowerCase()} yet`} body="This surface is connected and waiting for real records from Supabase." /> : <div className="records-table"><div className="record-header"><span>Primary record</span><span>Status / type</span><span>Updated / due</span></div>{rows.map((row, index) => <div className="record-row" key={String(row.id || index)}><div><strong>{value(row, primaryKey[active])}</strong><small>{value(row, secondaryKey[active])}</small></div><span className="status-badge"><StatusDot tone={String(row.status || row.actual_state || "").includes("active") || String(row.status || "").includes("paid") ? "green" : "amber"} />{value(row, "actual_state") !== "—" ? value(row, "actual_state") : value(row, "status")}</span><small className="muted">{value(row, dateKey[active])}</small>{active === "Clients" && <button className="delete-client-button" title="Delete client" aria-label={`Delete ${value(row, "company_name")}`} onClick={() => deleteClient(String(row.id), value(row, "company_name"))}><Trash2 size={15} /></button>}</div>)}</div>}</section>{showForm && <RecordModal active={active} onClose={() => setShowForm(false)} onDone={() => { setShowForm(false); window.location.reload(); }} />}</div>; }
+export function CommandCenter({ onLogout }: { onLogout: () => void }) {
+  const [, navigate] = useLocation();
+  const [active, setActive] = useState("Overview");
+  const [sidebar, setSidebar] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
 
-export function CommandCenter({ onLogout }: { onLogout: () => void }) { const [, navigate] = useLocation(); const [active, setActive] = useState("Overview"); const [sidebar, setSidebar] = useState(false); const [authLoading, setAuthLoading] = useState(true); const [authorized, setAuthorized] = useState(false); const [showOnboarding, setShowOnboarding] = useState(false); const [overview, setOverview] = useState<Overview>({ clients: [], templates: 0, workflows: 0, instances: 0, mrr: 0, overdue: 0, loading: true, error: null }); const [query, setQuery] = useState(""); useEffect(() => { let mounted = true; fetch("/api/auth/me", { credentials: "include" }).then(async response => ({ ok: response.ok, body: await response.json() })).then(result => { if (!mounted) return; if (result.ok && result.body.user?.role === "admin") setAuthorized(true); else navigate("/"); }).catch(() => mounted && navigate("/")).finally(() => mounted && setAuthLoading(false)); return () => { mounted = false; }; }, [navigate]); useEffect(() => { let mounted = true; fetch("/api/admin/overview", { credentials: "include" }).then(async response => ({ response, body: await response.json() })).then(({ response, body }) => mounted && setOverview({ clients: body.clients || [], templates: body.templates || 0, workflows: body.workflows || 0, instances: body.instances || 0, mrr: body.mrr || 0, overdue: body.overdue || 0, loading: false, error: response.ok ? body.error || null : body.error || "Unable to load overview." })).catch(() => mounted && setOverview(v => ({ ...v, loading: false, error: "Unable to load overview." }))); return () => { mounted = false; }; }, []); const filtered = useMemo(() => overview.clients.filter(c => c.company_name.toLowerCase().includes(query.toLowerCase())), [overview.clients, query]); if (authLoading) return <div className="portal-page"><div className="eyebrow"><span className="signal" /> VERIFYING ADMIN SESSION</div></div>; if (!authorized) return null; if (active !== "Overview") return <ModuleView active={active} onBack={() => setActive("Overview")} onLogout={onLogout} />; const currency = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }); return <div className="app-shell"><aside className={`sidebar ${sidebar ? "open" : ""}`}><div className="side-top"><Brand /><button className="close-button mobile-only" onClick={() => setSidebar(false)}><X size={18} /></button></div><div className="workspace-switch"><div className="workspace-avatar">VO</div><div><strong>VectorOps Business</strong><small>Admin workspace</small></div><ChevronRight size={15} /></div><nav>{nav.map(([label, Icon]) => <button key={label} className={active === label ? "active" : ""} onClick={() => { setActive(label); setSidebar(false); }}><Icon size={17} /><span>{label}</span>{label === "Support" && <span className="nav-count">0</span>}</button>)}</nav><div className="side-bottom"><div className="secure-chip"><ShieldCheck size={15} /><span><strong>Three-plane control</strong><small>RLS protected</small></span></div><button className="logout" onClick={onLogout}><LogOut size={16} /> Sign out</button></div></aside><main className="main-content"><header className="topbar"><button className="menu-button mobile-only" onClick={() => setSidebar(true)}><Menu size={19} /></button><div className="crumb"><span>Your business workspace</span><ChevronRight size={14} /><strong>{active}</strong></div><div className="top-actions"><div className="searchbox"><Search size={16} /><input placeholder="Search your business..." value={query} onChange={e => setQuery(e.target.value)} /></div><ThemeToggle /><div className="avatar">AD</div></div></header><div className="page-wrap"><div className="page-header"><div><div className="eyebrow"><span className="signal" /> YOUR BUSINESS / COMMAND CENTER</div><h1>Good morning, operator.</h1><div className="workspace-status"><span className="status-dot green" /> Live workspace <span>•</span> Updated just now</div><p>One focused view for clients, cash flow, workflow health, and infrastructure.</p></div><div className="header-actions"><Button className="secondary-cta" onClick={() => setActive("Money")}>View finances <ArrowUpRight size={15} /></Button><Button className="soft-button" onClick={() => setShowOnboarding(true)}><Plus size={16} /> Add client</Button></div></div>{overview.error && <div className="notice"><Database size={16} /><span>{overview.error}</span><button onClick={() => window.location.reload()}>Retry</button></div>}<section className="stat-grid"><Stat label="Active clients" value={overview.loading ? "—" : String(overview.clients.filter(c => c.status === "active").length)} detail={`${overview.clients.length} tenant records`} icon={Users} tone="blue" /><Stat label="MRR" value={overview.loading ? "—" : currency.format(overview.mrr)} detail="Active subscriptions" icon={CircleDollarSign} /><Stat label="Outstanding revenue" value={overview.loading ? "—" : currency.format(overview.overdue)} detail="Due and overdue invoices" icon={FolderKanban} tone={overview.overdue ? "amber" : "default"} /><Stat label="Workflow catalog" value={overview.loading ? "—" : String(overview.workflows)} detail={`${overview.templates} reusable templates`} icon={Zap} tone="purple" /><Stat label="Collected revenue" value="₹0" detail="Payments recorded" icon={BarChart3} /><Stat label="Renewals" value="0" detail="Next 30 days" icon={CalendarDays} /><Stat label="Open tickets" value="0" detail="Support queue" icon={Ticket} /><Stat label="Infrastructure" value={overview.loading ? "—" : String(overview.instances)} detail="n8n instances" icon={Network} /></section><div className="content-grid"><section className="panel neumorph"><div className="panel-head"><div><span className="eyebrow">ATTENTION ENGINE</span><h2>What needs attention</h2><p className="panel-subtitle">Priorities across your business today.</p></div><span className="attention-count">{overview.overdue ? "1 open" : "0 open"}</span></div>{overview.overdue ? <div className="attention-list"><div className="attention-row"><StatusDot tone="amber" /><div><strong>Outstanding revenue detected</strong><small>Review unpaid invoices in Money</small></div><button className="panel-action" onClick={() => setActive("Money")}>Review <ArrowUpRight size={14} /></button></div></div> : <Empty title="All clear for now" body="Payment alerts, renewal windows, workflow failures, stale telemetry, and onboarding gaps will appear here." />}</section><section className="panel neumorph"><div className="panel-head"><div><span className="eyebrow">CLIENT HEALTH</span><h2>Your client relationships</h2><p className="panel-subtitle">Keep every account moving forward.</p></div><Sparkles size={18} className="muted" /></div>{filtered.length ? <div className="client-list">{filtered.slice(0, 5).map(client => <div className="client-row" key={client.id}><div className="client-initial">{client.company_name.slice(0, 2).toUpperCase()}</div><div className="client-meta"><strong>{client.company_name}</strong><small>{client.contact_name || client.email || "No contact details"}</small></div><span className={`status-badge ${client.status}`}><StatusDot tone={client.status === "active" ? "green" : "amber"} />{client.status}</span><ChevronRight size={15} className="muted" /></div>)}</div> : <Empty title="No tenants yet" body="Start your business workspace by adding your first client." />}</section></div><div className="lower-grid"><section className="panel neumorph compact-panel"><div className="panel-head"><div><span className="eyebrow">REVENUE TREND</span><h2>Business operations</h2></div><CircleDollarSign size={18} className="muted" /></div><div className="trend-placeholder"><div className="trend-bars"><i /><i /><i /><i /><i /><i /><i /></div><small>Payments, invoices, adjustments and renewals will consolidate here.</small></div></section><section className="panel neumorph compact-panel"><div className="panel-head"><div><span className="eyebrow">AUTOMATION HEALTH</span><h2>Workflow control</h2></div><Network size={18} className="muted" /></div><div className="connection-line"><div className="connection-icon"><Zap size={18} /></div><div><strong>{overview.workflows ? `${overview.workflows} workflows under management` : "No workflows connected"}</strong><small>Desired state, actual state, execution health, and sync status</small></div><span className="status-badge pending"><StatusDot tone="amber" /> monitored</span></div></section></div></div></main>{showOnboarding && <OnboardingModal onClose={() => setShowOnboarding(false)} onDone={() => { setShowOnboarding(false); window.location.reload(); }} />}</div>; }
+  useEffect(() => {
+    let mounted = true;
+    fetch("/api/auth/me", { credentials: "include" })
+      .then(async (response) => ({ ok: response.ok, body: await response.json() }))
+      .then((result) => {
+        if (!mounted) return;
+        if (result.ok && result.body.user?.role === "admin") setAuthorized(true);
+        else navigate("/");
+      })
+      .catch(() => mounted && navigate("/"))
+      .finally(() => mounted && setAuthLoading(false));
+    return () => {
+      mounted = false;
+    };
+  }, [navigate]);
+
+  if (authLoading) {
+    return (
+      <div className="portal-page" style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>
+        <div className="panel neumorph" style={{ padding: "30px", textAlign: "center" }}>
+          <div className="signal" style={{ margin: "0 auto 10px" }} />
+          Verifying operator session...
+        </div>
+      </div>
+    );
+  }
+
+  if (!authorized) return null;
+
+  return (
+    <div className="app-shell">
+      {/* Sidebar */}
+      <aside className={`sidebar ${sidebar ? "open" : ""}`}>
+        <div className="side-top">
+          <Brand />
+          <button className="close-button mobile-only" onClick={() => setSidebar(false)}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="workspace-switch">
+          <div className="workspace-avatar">VO</div>
+          <div>
+            <strong>VectorOps Agency</strong>
+            <small>Master operator workspace</small>
+          </div>
+          <ChevronRight size={15} />
+        </div>
+        <nav>
+          {nav.map(([label, Icon]) => (
+            <button
+              key={label}
+              className={active === label ? "active" : ""}
+              onClick={() => {
+                setActive(label);
+                setSidebar(false);
+              }}
+            >
+              <Icon size={17} />
+              <span>{label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="side-bottom">
+          <div className="secure-chip">
+            <ShieldCheck size={15} />
+            <span>
+              <strong>3-Plane Control</strong>
+              <small>Master Key Active</small>
+            </span>
+          </div>
+          <button className="logout" onClick={onLogout}>
+            <LogOut size={16} /> Sign out
+          </button>
+        </div>
+      </aside>
+
+      {/* Main Content Area */}
+      <main className="main-content">
+        <header className="topbar">
+          <button className="menu-button mobile-only" onClick={() => setSidebar(true)}>
+            <Menu size={19} />
+          </button>
+          <div className="crumb">
+            <span>Agency workspace</span>
+            <ChevronRight size={14} />
+            <strong>{active}</strong>
+          </div>
+          <div className="top-actions">
+            <ThemeToggle />
+            <div className="avatar">VO</div>
+          </div>
+        </header>
+
+        <div className="page-wrap">
+          {active === "Overview" && (
+            <OverviewView
+              onNavigate={(module) => setActive(module)}
+              onAddClient={() => setShowOnboarding(true)}
+              onOpenClient={(client) => {
+                setSelectedClient(client);
+                setActive("Clients");
+              }}
+            />
+          )}
+
+          {active === "Clients" && (
+            <ClientsView
+              onAddClient={() => setShowOnboarding(true)}
+              selectedClient={selectedClient}
+              onCloseDetail={() => setSelectedClient(null)}
+            />
+          )}
+
+          {active === "Money" && <MoneyView />}
+
+          {active === "Automations" && <AutomationsView />}
+
+          {active === "Infrastructure" && <InfrastructureView />}
+
+          {active === "Support" && <SupportView />}
+
+          {active === "Calendar" && <CalendarView />}
+
+          {active === "Tasks" && <TasksView />}
+
+          {active === "Settings" && <SettingsView />}
+        </div>
+      </main>
+
+      {/* 9-Step Onboarding Wizard */}
+      {showOnboarding && (
+        <OnboardingWizard
+          onClose={() => setShowOnboarding(false)}
+          onComplete={() => {
+            setShowOnboarding(false);
+            window.location.reload();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
