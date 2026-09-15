@@ -238,6 +238,34 @@ async function adminOverview(request: Request, response: Response) {
   return response.json({ ok: true, clients: clients.data || [], templates: templates.count || 0, workflows: workflows.count || 0, instances: instances.count || 0, mrr: (subscriptions.data || []).reduce((sum, row) => sum + Number(row.monthly_amount || 0), 0), overdue: (invoices.data || []).reduce((sum, row) => sum + Math.max(Number(row.total_amount || 0) - Number(row.amount_paid || 0), 0), 0), error: clients.error?.message || null });
 }
 
+
+const adminWriteMap: Record<string, { table: string; fields: string[] }> = {
+  clients: { table: "clients", fields: ["company_name","contact_name","email","phone","status","notes"] },
+  subscriptions: { table: "subscriptions", fields: ["client_id","service_name","monthly_amount","currency","billing_day","auto_renew","status","start_date","current_period_start","current_period_end"] },
+  invoices: { table: "invoices", fields: ["client_id","subscription_id","invoice_number","invoice_type","issue_date","due_date","period_start","period_end","total_amount","amount_paid","status","description"] },
+  payments: { table: "payments", fields: ["client_id","invoice_id","amount","payment_date","method","reference","status","notes"] },
+  billing_adjustments: { table: "billing_adjustments", fields: ["client_id","subscription_id","invoice_id","adjustment_type","amount_delta","days_delta","description","applied"] },
+  n8n_instances: { table: "n8n_instances", fields: ["instance_name","base_url","hosting_type","status","server_id","n8n_api_secret_ref","metadata"] },
+  workflows: { table: "workflows", fields: ["client_id","n8n_instance_id","n8n_workflow_id","workflow_name","business_name","business_job","description","status","client_visible","desired_state","actual_state","config"] },
+  tasks: { table: "tasks", fields: ["client_id","title","description","status","priority","due_at","client_visible"] },
+  support_tickets: { table: "support_tickets", fields: ["client_id","ticket_number","subject","status","priority","category"] },
+  calendar_events: { table: "calendar_events", fields: ["client_id","title","event_type","starts_at","ends_at","location","notes"] },
+};
+
+async function adminWrite(request: Request, response: Response) {
+  const context = await adminContext(request); if (!context) return response.status(401).json({ ok: false, error: "Not authenticated." });
+  const resource=String(request.params.resource||""); const definition=adminWriteMap[resource]; if(!definition) return response.status(404).json({ok:false,error:"This module does not support creation yet."});
+  const body=request.body as Record<string, unknown>; const payload: Record<string, unknown>={}; for(const field of definition.fields){ if(body[field] !== undefined && body[field] !== "") payload[field]=body[field]; }
+  if(resource==="invoices" && payload.amount_paid===undefined) payload.amount_paid=0; if(resource==="invoices" && payload.status===undefined) payload.status="open"; if(resource==="payments" && payload.status===undefined) payload.status="recorded"; if(resource==="tasks" && payload.status===undefined) payload.status="open"; if(resource==="tasks" && payload.priority===undefined) payload.priority="normal"; if(resource==="support_tickets" && payload.status===undefined) payload.status="open"; if(resource==="support_tickets" && payload.priority===undefined) payload.priority="normal"; if(resource==="workflows" && payload.status===undefined) payload.status="active"; if(resource==="workflows" && payload.desired_state===undefined) payload.desired_state="running"; if(resource==="workflows" && payload.actual_state===undefined) payload.actual_state="unknown"; if(resource==="n8n_instances" && payload.status===undefined) payload.status="pending";
+  if(resource==="payments") payload.recorded_by_user_id=(await currentAdminUser(request)) || undefined; if(resource==="billing_adjustments") payload.created_by_user_id=(await currentAdminUser(request)) || undefined; if(resource==="tasks") payload.created_by_user_id=(await currentAdminUser(request)) || undefined; if(resource==="support_tickets") payload.created_by_user_id=(await currentAdminUser(request)) || undefined;
+  const result=await context.service.from(definition.table as never).insert(payload).select("*").limit(1).single(); if(result.error) return response.status(400).json({ok:false,error:result.error.message});
+  if(resource==="payments" && payload.invoice_id) { const invoice=await context.service.from("invoices").select("id,total_amount,amount_paid").eq("id",String(payload.invoice_id)).limit(1).maybeSingle(); if(invoice.data){const total=Number(invoice.data.total_amount||0), paid=Number(invoice.data.amount_paid||0)+Number(payload.amount||0); await context.service.from("invoices").update({amount_paid:paid,status:paid>=total?"paid":"partially_paid"}).eq("id",invoice.data.id);}}
+  const createdId = (result.data as { id?: string } | null)?.id || null;
+  await context.service.from("audit_logs").insert({actor_user_id:await currentAdminUser(request),actor_role:"admin",action:resource+".created",table_name:definition.table,record_id:createdId,metadata:{}}); return response.status(201).json({ok:true,row:result.data});
+}
+async function currentAdminUser(request: Request){ const raw=readCookie(request,SESSION_COOKIE); if(!raw)return null; try{const session=JSON.parse(raw) as Session; const {data}=await createAnonClient().auth.getUser(session.access_token); if(!data.user)return null; const profile=await profileForUser(createServiceClient(),data.user.id); return profile?.role==="admin"?data.user.id:null;}catch{return null;} }
+async function updateClientStatus(request: Request,response: Response){const context=await adminContext(request);if(!context)return response.status(401).json({ok:false,error:"Not authenticated."});const status=(request.body as {status?:string}).status;if(!["pending","active","paused","churned","archived"].includes(String(status)))return response.status(400).json({ok:false,error:"Invalid client status."});const result=await context.service.from("clients").update({status}).eq("id",String(request.params.id)).select("id,company_name,status").limit(1).single();if(result.error)return response.status(400).json({ok:false,error:result.error.message});await context.service.from("audit_logs").insert({actor_user_id:await currentAdminUser(request),actor_role:"admin",client_id:request.params.id,action:"client."+status,table_name:"clients",record_id:request.params.id,metadata:{}});return response.json({ok:true,row:result.data});}
+
 export function createApiApp() {
   const app = express();
   app.disable("x-powered-by");
@@ -252,6 +280,8 @@ export function createApiApp() {
   app.post("/api/portal/:slug/workflows/:workflowId/state", updateClientAutomationState);
   app.get("/api/admin/overview", adminOverview);
   app.get("/api/admin/data/:resource", adminData);
+  app.post("/api/admin/data/:resource", adminWrite);
+  app.patch("/api/admin/clients/:id/status", updateClientStatus);
   app.post("/api/auth/logout", (_request, response) => { clearSession(response); response.json({ ok: true }); });
   return app;
 }
