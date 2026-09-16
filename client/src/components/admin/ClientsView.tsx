@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, type CSSProperties } from "react";
 import {
   Users,
   Search,
@@ -16,9 +16,12 @@ import {
   Clock,
   AlertTriangle,
   ExternalLink,
+  Ticket,
+  CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { Client, Subscription, Invoice, Workflow, N8nInstance } from "@/types/vectorops";
+import type { Client, ClientPortalConfig, Subscription, Invoice, Workflow, N8nInstance, Payment, BillingAdjustment, ClientOnboarding, SupportTicket, Task, BusinessEvent } from "@/types/vectorops";
+import { apiFetch as fetch } from "@/lib/api";
 
 interface ClientsViewProps {
   onAddClient: () => void;
@@ -32,7 +35,7 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeClient, setActiveClient] = useState<Client | null>(initialSelected || null);
-  const [detailTab, setDetailTab] = useState<"overview" | "subscriptions" | "invoices" | "automations" | "infrastructure">("overview");
+  const [detailTab, setDetailTab] = useState<"overview" | "onboarding" | "portal" | "subscriptions" | "invoices" | "automations" | "infrastructure" | "operations">("overview");
 
   // Related data for active client
   const [clientSub, setClientSub] = useState<Subscription | null>(null);
@@ -41,6 +44,13 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
   const [clientInstance, setClientInstance] = useState<N8nInstance | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [portalSlug, setPortalSlug] = useState<string>("");
+  const [portalConfig, setPortalConfig] = useState<ClientPortalConfig | null>(null);
+  const [clientPayments, setClientPayments] = useState<Payment[]>([]);
+  const [clientAdjustments, setClientAdjustments] = useState<BillingAdjustment[]>([]);
+  const [clientOnboarding, setClientOnboarding] = useState<ClientOnboarding | null>(null);
+  const [clientTickets, setClientTickets] = useState<SupportTicket[]>([]);
+  const [clientTasks, setClientTasks] = useState<Task[]>([]);
+  const [clientActivity, setClientActivity] = useState<BusinessEvent[]>([]);
 
   const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
@@ -69,11 +79,18 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
     setActiveClient(client);
     setLoadingDetail(true);
     try {
-      const [subsRes, invsRes, wfsRes, instsRes] = await Promise.all([
+      const [subsRes, invsRes, wfsRes, instsRes, portalsRes, paymentsRes, adjustmentsRes, onboardingRes, ticketsRes, tasksRes, activityRes] = await Promise.all([
         fetch("/api/admin/data/subscriptions", { credentials: "include" }).then((r) => r.json()),
         fetch("/api/admin/data/invoices", { credentials: "include" }).then((r) => r.json()),
         fetch("/api/admin/data/workflows", { credentials: "include" }).then((r) => r.json()),
         fetch("/api/admin/data/n8n_instances", { credentials: "include" }).then((r) => r.json()),
+        fetch("/api/admin/data/client_portal_config", { credentials: "include" }).then((r) => r.json()),
+        fetch("/api/admin/data/payments", { credentials: "include" }).then((r) => r.json()),
+        fetch("/api/admin/data/billing_adjustments", { credentials: "include" }).then((r) => r.json()),
+        fetch("/api/admin/data/client_onboarding", { credentials: "include" }).then((r) => r.json()),
+        fetch("/api/admin/data/support_tickets", { credentials: "include" }).then((r) => r.json()),
+        fetch("/api/admin/data/tasks", { credentials: "include" }).then((r) => r.json()),
+        fetch("/api/admin/data/business_events", { credentials: "include" }).then((r) => r.json()),
       ]);
 
       const sub = (subsRes.rows as Subscription[])?.find((s) => s.client_id === client.id) || null;
@@ -90,10 +107,15 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
       setClientInvoices(invs);
       setClientWorkflows(wfs);
       setClientInstance(inst);
-
-      // Guess or derive slug from company name
-      const slugCandidate = client.company_name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      setPortalSlug(slugCandidate);
+      const config = (portalsRes.rows as ClientPortalConfig[])?.find((item) => item.client_id === client.id) || null;
+      setPortalConfig(config);
+      setPortalSlug(config?.slug || "");
+      setClientPayments((paymentsRes.rows as Payment[] || []).filter((item) => item.client_id === client.id));
+      setClientAdjustments((adjustmentsRes.rows as BillingAdjustment[] || []).filter((item) => item.client_id === client.id));
+      setClientOnboarding((onboardingRes.rows as ClientOnboarding[] || []).find((item) => item.client_id === client.id) || null);
+      setClientTickets((ticketsRes.rows as SupportTicket[] || []).filter((item) => item.client_id === client.id));
+      setClientTasks((tasksRes.rows as Task[] || []).filter((item) => item.client_id === client.id));
+      setClientActivity((activityRes.rows as BusinessEvent[] || []).filter((item) => item.client_id === client.id));
     } catch {
       toast.error("Could not fetch full client profile.");
     } finally {
@@ -176,9 +198,7 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
       const data = await res.json();
       if (data.ok) {
         toast.success(`Workflow state updated to ${nextState}`);
-        setClientWorkflows((prev) =>
-          prev.map((w) => (w.id === workflow.id ? { ...w, desired_state: nextState, actual_state: nextState } : w))
-        );
+        setClientWorkflows((prev) => prev.map((item) => item.id === workflow.id ? { ...item, desired_state: nextState, sync_status: "pending" } : item));
       }
     } catch {
       toast.error("Failed to update workflow state.");
@@ -365,6 +385,13 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
               >
                 OVERVIEW
               </button>
+              <button className={`tab-btn ${detailTab === "onboarding" ? "active" : ""}`} onClick={() => setDetailTab("onboarding")}>ONBOARDING</button>
+              <button
+                className={`tab-btn ${detailTab === "portal" ? "active" : ""}`}
+                onClick={() => setDetailTab("portal")}
+              >
+                PORTAL DESIGN
+              </button>
               <button
                 className={`tab-btn ${detailTab === "subscriptions" ? "active" : ""}`}
                 onClick={() => setDetailTab("subscriptions")}
@@ -389,6 +416,7 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
               >
                 INFRASTRUCTURE
               </button>
+              <button className={`tab-btn ${detailTab === "operations" ? "active" : ""}`} onClick={() => setDetailTab("operations")}>OPERATIONS</button>
             </div>
 
             {loadingDetail ? (
@@ -448,6 +476,12 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
                       )}
                     </div>
 
+                    <div className="panel neumorph" style={{ marginBottom: "18px" }}>
+                      <div className="panel-head"><div><span className="eyebrow">FINANCIAL HEALTH</span><h2>Balance & payment timeline</h2></div></div>
+                      <div className="metric-card-group"><div className="metric-box"><span>OUTSTANDING</span><strong>{currency.format(clientInvoices.reduce((sum, invoice) => sum + Math.max(0, invoice.total_amount - invoice.amount_paid), 0))}</strong></div><div className="metric-box"><span>PAYMENTS</span><strong>{clientPayments.length}</strong></div><div className="metric-box"><span>ADJUSTMENTS</span><strong>{clientAdjustments.length}</strong></div></div>
+                      <div className="financial-timeline">{[...clientPayments.map((item) => ({ id: item.id, date: item.payment_date, label: `Payment · ${currency.format(item.amount)}`, detail: item.reference || item.method || "Recorded payment" })), ...clientAdjustments.map((item) => ({ id: item.id, date: item.created_at, label: `${item.adjustment_type.replaceAll("_", " ")} · ${currency.format(item.amount_delta)}`, detail: item.description || `${item.days_delta} day adjustment` }))].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8).map((item) => <div key={item.id}><time>{item.date.slice(0, 10)}</time><strong>{item.label}</strong><span>{item.detail}</span></div>)}{!clientPayments.length && !clientAdjustments.length && <div className="empty-cell">No payment or adjustment history.</div>}</div>
+                    </div>
+
                     {/* Section 54: Safe Churn & Reactivation Controls */}
                     <div className="panel neumorph" style={{ border: "1px dashed var(--line)" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -478,7 +512,28 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
                   </div>
                 )}
 
+                {detailTab === "onboarding" && clientOnboarding && <OnboardingProgress clientId={activeClient.id} value={clientOnboarding} onChange={setClientOnboarding} />}
+                {detailTab === "onboarding" && !clientOnboarding && <div className="panel neumorph empty-cell">No persisted onboarding record exists for this client.</div>}
+
                 {/* TAB 2: SUBSCRIPTION */}
+                {detailTab === "portal" && portalConfig && (
+                  <PortalConfigEditor
+                    client={activeClient}
+                    initialConfig={portalConfig}
+                    onSaved={(config) => {
+                      setPortalConfig(config);
+                      setPortalSlug(config.slug);
+                    }}
+                  />
+                )}
+
+                {detailTab === "portal" && !portalConfig && (
+                  <div className="panel neumorph" style={{ textAlign: "center", color: "var(--muted)" }}>
+                    This client does not have a portal configuration yet.
+                  </div>
+                )}
+
+                {/* TAB 3: SUBSCRIPTION */}
                 {detailTab === "subscriptions" && (
                   <div>
                     {clientSub ? (
@@ -508,7 +563,7 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
                           <div>
                             <small className="muted">Next Scheduled Invoice</small>
                             <p style={{ margin: "4px 0 10px", fontFamily: "monospace" }}>
-                              {clientSub.next_billing_date}
+                              {clientSub.next_billing_date || clientSub.current_period_end || "Not scheduled"}
                             </p>
                           </div>
                           <div>
@@ -665,11 +720,166 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
                     )}
                   </div>
                 )}
+
+                {detailTab === "operations" && (
+                  <div className="portal-two-column">
+                    <div className="panel neumorph"><div className="panel-head"><div><span className="eyebrow">HEALTH & SUPPORT</span><h2>{clientTickets.filter((ticket) => !["resolved", "closed"].includes(ticket.status)).length} open tickets</h2></div></div>{clientTickets.length ? clientTickets.map((ticket) => <div className="attention-row" key={ticket.id}><Ticket size={14} /><div><strong>{ticket.subject}</strong><small>{ticket.ticket_number} · {ticket.status.replaceAll("_", " ")}</small></div></div>) : <div className="empty-cell">No support tickets.</div>}</div>
+                    <div className="panel neumorph"><div className="panel-head"><div><span className="eyebrow">TASKS</span><h2>{clientTasks.filter((task) => !["completed", "cancelled"].includes(task.status)).length} active items</h2></div></div>{clientTasks.length ? clientTasks.map((task) => <div className="attention-row" key={task.id}><CheckCircle2 size={14} /><div><strong>{task.title}</strong><small>{task.status.replaceAll("_", " ")} · {task.priority}</small></div></div>) : <div className="empty-cell">No tenant tasks.</div>}</div>
+                    <div className="panel neumorph" style={{ gridColumn: "1/-1" }}><div className="panel-head"><div><span className="eyebrow">CLIENT ACTIVITY</span><h2>Business event timeline</h2></div></div>{clientActivity.length ? clientActivity.slice(0, 20).map((event) => <div className="financial-timeline" key={event.id}><div><time>{new Date(event.occurred_at).toLocaleString()}</time><strong>{event.event_type.replaceAll("_", " ")}</strong><span>{event.event_value == null ? "Recorded" : `Value ${event.event_value}`}</span></div></div>) : <div className="empty-cell">No business activity recorded.</div>}</div>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+function OnboardingProgress({ clientId, value, onChange }: { clientId: string; value: ClientOnboarding; onChange: (value: ClientOnboarding) => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const stages: Array<[keyof ClientOnboarding, string, string]> = [
+    ["identity_complete", "Identity", "Client and contact record"],
+    ["portal_complete", "Portal configuration", "Brand, modules, and route"],
+    ["commercial_complete", "Commercial", "Retainer and billing terms"],
+    ["infrastructure_complete", "Infrastructure", "Execution environment selected"],
+    ["automations_complete", "Automation configuration", "At least one explicitly mapped workflow"],
+    ["n8n_complete", "n8n setup", "Connected client n8n assignment"],
+    ["account_complete", "Account", "Client authentication profile"],
+    ["verification_complete", "Verification", "Active instance with successful sync"],
+    ["access_sent", "Access delivery", "Portal access delivered to client"],
+  ];
+  const update = async (stage: keyof ClientOnboarding, complete: boolean) => {
+    setBusy(stage);
+    try {
+      const response = await fetch(`/api/admin/clients/${clientId}/onboarding`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ stage, complete }) });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "Unable to update onboarding.");
+      onChange(result.onboarding);
+      toast.success(`${stages.find(([key]) => key === stage)?.[1]} updated.`);
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Unable to update onboarding."); }
+    finally { setBusy(null); }
+  };
+  const completed = stages.filter(([key]) => value[key] === true).length;
+  return <div className="panel neumorph"><div className="panel-head"><div><span className="eyebrow">PERSISTED ONBOARDING</span><h2>{completed} of {stages.length} stages complete</h2><p>Incomplete clients can resume here. Dependency-backed stages are rejected until their real prerequisites pass.</p></div>{value.completed_at && <span className="badge badge-green">COMPLETE</span>}</div><div className="onboarding-stage-list">{stages.map(([key, label, description]) => <label key={key} className={value[key] ? "complete" : ""}><input type="checkbox" checked={value[key] === true} disabled={!!busy} onChange={(event) => void update(key, event.target.checked)} /><span><strong>{label}</strong><small>{description}</small></span><em>{busy === key ? "Checking…" : value[key] ? "Complete" : "Required"}</em></label>)}</div></div>;
+}
+
+function PortalConfigEditor({ client, initialConfig, onSaved }: {
+  client: Client;
+  initialConfig: ClientPortalConfig;
+  onSaved: (config: ClientPortalConfig) => void;
+}) {
+  const [config, setConfig] = useState({
+    ...initialConfig,
+    enabled_modules: initialConfig.enabled_modules.map((module) => module.toLowerCase()),
+  });
+  const [kpiText, setKpiText] = useState(
+    (Array.isArray(initialConfig.kpi_config) ? initialConfig.kpi_config : Object.entries(initialConfig.kpi_config || {}).map(([key, label]) => ({ key, label })))
+      .map((item) => { const value = item as Record<string, unknown>; return `${String(value.key || "")}:${String(value.label || "")}:${String(value.type || "tracked")}:${String(value.numerator || "")}:${String(value.denominator || "")}`; })
+      .join("\n"),
+  );
+  const [terminologyText, setTerminologyText] = useState(Object.entries(initialConfig.terminology || {}).map(([key, label]) => `${key}:${label}`).join("\n"));
+  const [settingsText, setSettingsText] = useState(JSON.stringify(initialConfig.client_settings_schema || {}, null, 2));
+  const [companyDisplayName, setCompanyDisplayName] = useState(String(initialConfig.dashboard_config?.company_display_name || client.company_name));
+  const [density, setDensity] = useState(String(initialConfig.dashboard_config?.density || "comfortable"));
+  const [layout, setLayout] = useState(String(initialConfig.dashboard_config?.layout || "balanced"));
+  const [visibleCards, setVisibleCards] = useState<string[]>(Array.isArray(initialConfig.dashboard_config?.visible_cards) ? initialConfig.dashboard_config.visible_cards.map(String) : ["retainer", "automations", "executions", "requests"]);
+  const [cardOrderText, setCardOrderText] = useState((Array.isArray(initialConfig.dashboard_config?.card_order) ? initialConfig.dashboard_config.card_order : ["retainer", "automations", "executions", "requests"]).join(", "));
+  const [moduleOrderText, setModuleOrderText] = useState((Array.isArray(initialConfig.dashboard_config?.module_order) ? initialConfig.dashboard_config.module_order : initialConfig.enabled_modules).join(", "));
+  const [saving, setSaving] = useState(false);
+  const modules = ["overview", "automations", "results", "billing", "support", "profile"];
+  const cards = ["retainer", "automations", "executions", "requests"];
+
+  const restore = (source: ClientPortalConfig) => {
+    setConfig({ ...source, enabled_modules: source.enabled_modules.map((module) => module.toLowerCase()) });
+    setKpiText((Array.isArray(source.kpi_config) ? source.kpi_config : Object.entries(source.kpi_config || {}).map(([key, label]) => ({ key, label }))).map((item) => { const value = item as Record<string, unknown>; return `${String(value.key || "")}:${String(value.label || "")}:${String(value.type || "tracked")}:${String(value.numerator || "")}:${String(value.denominator || "")}`; }).join("\n"));
+    setTerminologyText(Object.entries(source.terminology || {}).map(([key, label]) => `${key}:${label}`).join("\n"));
+    setSettingsText(JSON.stringify(source.client_settings_schema || {}, null, 2));
+    setCompanyDisplayName(String(source.dashboard_config?.company_display_name || client.company_name));
+    setDensity(String(source.dashboard_config?.density || "comfortable"));
+    setLayout(String(source.dashboard_config?.layout || "balanced"));
+    setVisibleCards(Array.isArray(source.dashboard_config?.visible_cards) ? source.dashboard_config.visible_cards.map(String) : cards);
+    setCardOrderText((Array.isArray(source.dashboard_config?.card_order) ? source.dashboard_config.card_order : cards).join(", "));
+    setModuleOrderText((Array.isArray(source.dashboard_config?.module_order) ? source.dashboard_config.module_order : source.enabled_modules).join(", "));
+  };
+
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    const kpiConfig = kpiText.split("\n").map((line) => {
+      const [key, label, type = "tracked", numerator = "", denominator = ""] = line.split(":");
+      return { key: key.trim(), label: label?.trim() || key.trim().replaceAll("_", " "), type: type.trim(), ...(numerator.trim() ? { numerator: numerator.trim() } : {}), ...(denominator.trim() ? { denominator: denominator.trim() } : {}) };
+    }).filter((item) => item.key);
+    try {
+      const terminology = Object.fromEntries(terminologyText.split("\n").filter(Boolean).map((line) => {
+        const [key, ...label] = line.split(":");
+        return [key.trim(), label.join(":").trim()];
+      }).filter(([key, label]) => key && label));
+      const clientSettingsSchema = JSON.parse(settingsText || "{}") as Record<string, unknown>;
+      if (!clientSettingsSchema || typeof clientSettingsSchema !== "object" || Array.isArray(clientSettingsSchema)) throw new Error("Client settings schema must be a JSON object.");
+      const normalizeOrder = (value: string, allowed: string[]) => Array.from(new Set(value.split(",").map((item) => item.trim().toLowerCase()).filter((item) => allowed.includes(item))));
+      const dashboardConfig = {
+        ...(config.dashboard_config || {}),
+        company_display_name: companyDisplayName.trim(),
+        density,
+        layout,
+        visible_cards: visibleCards,
+        card_order: normalizeOrder(cardOrderText, cards),
+        module_order: normalizeOrder(moduleOrderText, modules),
+      };
+      const response = await fetch(`/api/admin/clients/${client.id}/portal-config`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...config, dashboard_config: dashboardConfig, kpi_config: kpiConfig, terminology, client_settings_schema: clientSettingsSchema }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "Portal update failed.");
+      const normalizedPortal = {
+        ...result.portal,
+        enabled_modules: result.portal.enabled_modules.map((module: string) => module.toLowerCase()),
+      };
+      setConfig(normalizedPortal);
+      restore(normalizedPortal);
+      onSaved(normalizedPortal);
+      toast.success("Client portal design and modules updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Portal update failed.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={save} className="panel neumorph portal-config-editor">
+      <div className="panel-head">
+        <div><span className="eyebrow">CLIENT-SPECIFIC EXPERIENCE</span><h2>Brand, modules & business KPIs</h2></div>
+        <a className="action-pill" href={`/portal/${config.slug}`} target="_blank" rel="noreferrer"><ExternalLink size={12} /> Preview</a>
+      </div>
+      <div className="form-row-2">
+        <div className="form-group"><label>Portal Title</label><input value={config.portal_title} onChange={(event) => setConfig({ ...config, portal_title: event.target.value })} required /></div>
+        <div className="form-group"><label>Portal Slug</label><input value={config.slug} onChange={(event) => setConfig({ ...config, slug: event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })} required /></div>
+        <div className="form-group"><label>Company Display Name</label><input value={companyDisplayName} onChange={(event) => setCompanyDisplayName(event.target.value)} maxLength={120} required /></div>
+        <div className="form-group"><label>Visual Density</label><select value={density} onChange={(event) => setDensity(event.target.value)}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></div>
+        <div className="form-group"><label>Dashboard Layout</label><select value={layout} onChange={(event) => setLayout(event.target.value)}><option value="balanced">Balanced grid</option><option value="wide">Wide data</option><option value="stacked">Stacked sections</option></select></div>
+        <div className="form-group"><label>Primary Color</label><input type="color" value={config.primary_color} onChange={(event) => setConfig({ ...config, primary_color: event.target.value })} /></div>
+        <div className="form-group"><label>Accent Color</label><input type="color" value={config.accent_color} onChange={(event) => setConfig({ ...config, accent_color: event.target.value })} /></div>
+      </div>
+      <div className="form-group"><label>Logo URL</label><input type="url" value={config.logo_url || ""} onChange={(event) => setConfig({ ...config, logo_url: event.target.value || null })} placeholder="https://cdn.example.com/logo.png" /></div>
+      <div className="form-group"><label>Favicon URL</label><input type="url" value={config.favicon_url || ""} onChange={(event) => setConfig({ ...config, favicon_url: event.target.value || null })} placeholder="https://cdn.example.com/favicon.png" /></div>
+      <div className="form-group">
+        <label>Enabled Modules</label>
+        <div className="module-picker">{modules.map((module) => <label className="module-option" key={module}><input type="checkbox" checked={config.enabled_modules.includes(module)} onChange={() => setConfig({ ...config, enabled_modules: config.enabled_modules.includes(module) ? config.enabled_modules.filter((item) => item !== module) : [...config.enabled_modules, module] })} />{module}</label>)}</div>
+      </div>
+      <div className="form-group"><label>Visible Overview Cards</label><div className="module-picker">{cards.map((card) => <label className="module-option" key={card}><input type="checkbox" checked={visibleCards.includes(card)} onChange={() => setVisibleCards(visibleCards.includes(card) ? visibleCards.filter((item) => item !== card) : [...visibleCards, card])} />{card}</label>)}</div></div>
+      <div className="form-row-2"><div className="form-group"><label>Card Order (comma separated)</label><input value={cardOrderText} onChange={(event) => setCardOrderText(event.target.value)} /></div><div className="form-group"><label>Module Order (comma separated)</label><input value={moduleOrderText} onChange={(event) => setModuleOrderText(event.target.value)} /></div></div>
+      <div className="form-group"><label>Business KPIs (key:label:type:numerator:denominator)</label><textarea rows={4} value={kpiText} onChange={(event) => setKpiText(event.target.value)} placeholder={'lead_captured:New patients:tracked::\nconversion_rate:Conversion rate:derived:appointment_booked:lead_captured'} /><small className="muted">Tracked values use business events. Derived values require numerator and denominator keys. Estimated values appear only when a published report provides the key.</small></div>
+      <div className="form-row-2"><div className="form-group"><label>Client-Facing Terminology (key:label)</label><textarea rows={5} value={terminologyText} onChange={(event) => setTerminologyText(event.target.value)} placeholder={'automations:Workflows\nresults:Outcomes'} /></div><div className="form-group"><label>Client Settings Schema (JSON)</label><textarea rows={5} value={settingsText} onChange={(event) => setSettingsText(event.target.value)} spellCheck={false} /></div></div>
+      <div className="portal-brand-preview" style={{ "--preview-primary": config.primary_color, "--preview-accent": config.accent_color } as CSSProperties}>
+        <span>LIVE BRAND PREVIEW · {density.toUpperCase()}</span><strong>{config.portal_title}</strong><small>{companyDisplayName} · /portal/{config.slug}</small>
+      </div>
+      <div className="modal-actions"><button className="secondary-cta" type="button" onClick={() => restore(initialConfig)} disabled={saving}>Cancel changes</button><button className="secondary-cta" type="button" onClick={() => { setDensity("comfortable"); setLayout("balanced"); setVisibleCards(cards); setCardOrderText(cards.join(", ")); setModuleOrderText(modules.join(", ")); setTerminologyText(""); setSettingsText("{}"); }} disabled={saving}>Reset defaults</button><button className="primary-cta" type="submit" disabled={saving}>{saving ? "Saving..." : "Save Portal Configuration"}</button></div>
+    </form>
   );
 }

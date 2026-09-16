@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Invoice, Subscription, Payment, BillingAdjustment, Client } from "@/types/vectorops";
+import { apiFetch as fetch } from "@/lib/api";
 
 export function MoneyView() {
   const [activeTab, setActiveTab] = useState<"invoices" | "subscriptions" | "payments" | "adjustments">("invoices");
@@ -30,7 +31,24 @@ export function MoneyView() {
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<Invoice | null>(null);
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
 
-  const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  const currencyByClient = useMemo(() => new Map(subscriptions.map((subscription) => [subscription.client_id, subscription.currency])), [subscriptions]);
+  const formatMoney = (amount: number, clientId?: string) => new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: (clientId && currencyByClient.get(clientId)) || "USD",
+    maximumFractionDigits: 2,
+  }).format(Number(amount || 0));
+  const formatPortfolio = (entries: Array<{ amount: number; clientId: string }>) => {
+    const totals = new Map<string, number>();
+    entries.forEach(({ amount, clientId }) => {
+      const code = currencyByClient.get(clientId) || "USD";
+      totals.set(code, (totals.get(code) || 0) + amount);
+    });
+    if (totals.size === 0) return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(0);
+    return Array.from(totals.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([code, amount]) => new Intl.NumberFormat("en-US", { style: "currency", currency: code, maximumFractionDigits: 0 }).format(amount))
+      .join(" · ");
+  };
 
   const loadData = () => {
     setLoading(true);
@@ -57,19 +75,9 @@ export function MoneyView() {
   }, []);
 
   // Compute 4 Financial KPIs
-  const mrr = useMemo(() => {
-    return subscriptions
-      .filter((s) => s.status === "active")
-      .reduce((sum, s) => sum + Number(s.monthly_amount || 0), 0);
-  }, [subscriptions]);
-
-  const collected = useMemo(() => {
-    return payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  }, [payments]);
-
   const outstanding = useMemo(() => {
     return invoices
-      .filter((i) => i.status !== "paid" && i.status !== "voided")
+      .filter((i) => i.status !== "paid" && i.status !== "void")
       .reduce((sum, i) => sum + Math.max(0, Number(i.total_amount) - Number(i.amount_paid)), 0);
   }, [invoices]);
 
@@ -78,6 +86,19 @@ export function MoneyView() {
       .filter((i) => i.status === "overdue")
       .reduce((sum, i) => sum + Math.max(0, Number(i.total_amount) - Number(i.amount_paid)), 0);
   }, [invoices]);
+
+  const mrrDisplay = formatPortfolio(subscriptions
+    .filter((subscription) => subscription.status === "active")
+    .map((subscription) => ({ amount: Number(subscription.monthly_amount || 0), clientId: subscription.client_id })));
+  const collectedDisplay = formatPortfolio(payments
+    .filter((payment) => payment.status === "received")
+    .map((payment) => ({ amount: Number(payment.amount || 0), clientId: payment.client_id })));
+  const outstandingDisplay = formatPortfolio(invoices
+    .filter((invoice) => !["paid", "void"].includes(invoice.status))
+    .map((invoice) => ({ amount: Math.max(0, Number(invoice.total_amount) - Number(invoice.amount_paid)), clientId: invoice.client_id })));
+  const overdueDisplay = formatPortfolio(invoices
+    .filter((invoice) => invoice.status === "overdue")
+    .map((invoice) => ({ amount: Math.max(0, Number(invoice.total_amount) - Number(invoice.amount_paid)), clientId: invoice.client_id })));
 
   const clientNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -124,7 +145,7 @@ export function MoneyView() {
             <span>MONTHLY RECURRING REVENUE</span>
             <CircleDollarSign size={18} style={{ color: "var(--blue)" }} />
           </div>
-          <strong>{currency.format(mrr)}</strong>
+          <strong className="portfolio-money">{mrrDisplay}</strong>
           <small>{subscriptions.filter((s) => s.status === "active").length} active retainers</small>
         </div>
 
@@ -133,8 +154,8 @@ export function MoneyView() {
             <span>TOTAL COLLECTED</span>
             <TrendingUp size={18} style={{ color: "var(--green)" }} />
           </div>
-          <strong>{currency.format(collected)}</strong>
-          <small>{payments.length} verified payment entries</small>
+          <strong className="portfolio-money">{collectedDisplay}</strong>
+          <small>{payments.length} recorded payment entries</small>
         </div>
 
         <div className={`stat neumorph ${outstanding > 0 ? "amber" : ""}`}>
@@ -142,7 +163,7 @@ export function MoneyView() {
             <span>OUTSTANDING RECEIVABLES</span>
             <AlertTriangle size={18} style={{ color: "var(--amber)" }} />
           </div>
-          <strong>{currency.format(outstanding)}</strong>
+          <strong className="portfolio-money">{outstandingDisplay}</strong>
           <small>Uncollected invoice balances</small>
         </div>
 
@@ -151,7 +172,7 @@ export function MoneyView() {
             <span>OVERDUE REVENUE</span>
             <AlertTriangle size={18} style={{ color: overdue > 0 ? "#ef4444" : "var(--muted)" }} />
           </div>
-          <strong style={{ color: overdue > 0 ? "#ef4444" : "inherit" }}>{currency.format(overdue)}</strong>
+          <strong className="portfolio-money" style={{ color: overdue > 0 ? "#ef4444" : "inherit" }}>{overdueDisplay}</strong>
           <small>Invoices past due date</small>
         </div>
       </div>
@@ -219,10 +240,10 @@ export function MoneyView() {
                         <td style={{ fontFamily: "monospace", fontSize: "10px" }}>
                           {inv.period_start ? `${inv.period_start} to ${inv.period_end}` : "One-time"}
                         </td>
-                        <td>{currency.format(inv.total_amount)}</td>
-                        <td style={{ color: "var(--green)" }}>{currency.format(inv.amount_paid)}</td>
+                        <td>{formatMoney(inv.total_amount, inv.client_id)}</td>
+                        <td style={{ color: "var(--green)" }}>{formatMoney(inv.amount_paid, inv.client_id)}</td>
                         <td style={{ fontWeight: 600, color: remaining > 0 ? "var(--amber)" : "var(--muted)" }}>
-                          {currency.format(remaining)}
+                          {formatMoney(remaining, inv.client_id)}
                         </td>
                         <td>
                           <span
@@ -282,14 +303,14 @@ export function MoneyView() {
                         <strong>{sub.service_name}</strong>
                       </td>
                       <td>{clientNameMap.get(sub.client_id) || sub.client_id}</td>
-                      <td style={{ fontWeight: 700, fontSize: "13px" }}>{currency.format(sub.monthly_amount)} / mo</td>
+                      <td style={{ fontWeight: 700, fontSize: "13px" }}>{formatMoney(sub.monthly_amount, sub.client_id)} / mo</td>
                       <td>Day {sub.billing_day}</td>
                       <td>
                         <span className={`badge badge-${sub.status === "active" ? "green" : "amber"}`}>
                           {sub.status}
                         </span>
                       </td>
-                      <td style={{ fontFamily: "monospace", fontSize: "10px" }}>{sub.next_billing_date}</td>
+                      <td style={{ fontFamily: "monospace", fontSize: "10px" }}>{sub.next_billing_date || sub.current_period_end || "Not scheduled"}</td>
                       <td>{sub.auto_renew ? "Yes" : "Manual"}</td>
                     </tr>
                   ))}
@@ -324,7 +345,7 @@ export function MoneyView() {
                         <td style={{ fontFamily: "monospace", fontSize: "10px" }}>{p.id}</td>
                         <td style={{ fontFamily: "monospace", fontSize: "10px" }}>{p.payment_date}</td>
                         <td>{clientNameMap.get(p.client_id) || p.client_id}</td>
-                        <td style={{ fontWeight: 700, color: "var(--green)" }}>{currency.format(p.amount)}</td>
+                        <td style={{ fontWeight: 700, color: "var(--green)" }}>{formatMoney(p.amount, p.client_id)}</td>
                         <td>{p.method}</td>
                         <td style={{ fontFamily: "monospace", fontSize: "10px", color: "var(--muted)" }}>
                           {p.reference || "—"}
@@ -367,7 +388,7 @@ export function MoneyView() {
                         <td>{clientNameMap.get(a.client_id) || a.client_id}</td>
                         <td style={{ textTransform: "capitalize" }}>{a.adjustment_type.replace("_", " ")}</td>
                         <td style={{ fontWeight: 600 }}>
-                          {a.amount_delta !== 0 ? currency.format(a.amount_delta) : ""}
+                          {a.amount_delta !== 0 ? formatMoney(a.amount_delta, a.client_id) : ""}
                           {a.days_delta !== 0 ? ` +${a.days_delta} days free` : ""}
                         </td>
                         <td>{a.description}</td>
@@ -392,6 +413,7 @@ export function MoneyView() {
         <PaymentModal
           invoices={invoices}
           clients={clients}
+          subscriptions={subscriptions}
           selectedInvoice={selectedInvoiceForPayment}
           onClose={() => {
             setShowPaymentModal(false);
@@ -409,6 +431,8 @@ export function MoneyView() {
       {showAdjustmentModal && (
         <AdjustmentModal
           clients={clients}
+          subscriptions={subscriptions}
+          invoices={invoices}
           onClose={() => setShowAdjustmentModal(false)}
           onSuccess={() => {
             setShowAdjustmentModal(false);
@@ -427,12 +451,14 @@ export function MoneyView() {
 function PaymentModal({
   invoices,
   clients,
+  subscriptions,
   selectedInvoice: initialInvoice,
   onClose,
   onSuccess,
 }: {
   invoices: Invoice[];
   clients: Client[];
+  subscriptions: Subscription[];
   selectedInvoice: Invoice | null;
   onClose: () => void;
   onSuccess: () => void;
@@ -449,6 +475,8 @@ function PaymentModal({
     if (!currentInvoice) return 0;
     return Math.max(0, Number(currentInvoice.total_amount) - Number(currentInvoice.amount_paid));
   }, [currentInvoice]);
+  const paymentCurrency = subscriptions.find((subscription) => subscription.client_id === currentInvoice?.client_id)?.currency || "USD";
+  const paymentFormatter = new Intl.NumberFormat("en-US", { style: "currency", currency: paymentCurrency });
 
   const [amount, setAmount] = useState<number>(remainingBalance);
   const [method, setMethod] = useState<string>("Stripe / Credit Card");
@@ -468,12 +496,12 @@ function PaymentModal({
     if (!currentInvoice) return;
 
     if (amount <= 0) {
-      toast.error("Payment amount must be greater than $0.");
+      toast.error("Payment amount must be greater than zero.");
       return;
     }
 
     if (isOverpayment) {
-      toast.error(`Payment cannot exceed remaining balance of $${remainingBalance.toFixed(2)}.`);
+      toast.error(`Payment cannot exceed remaining balance of ${paymentFormatter.format(remainingBalance)}.`);
       return;
     }
 
@@ -494,7 +522,7 @@ function PaymentModal({
       });
       const data = await res.json();
       if (data.ok) {
-        toast.success(`Payment of $${amount.toFixed(2)} recorded and invoice updated!`);
+        toast.success(`Payment of ${paymentFormatter.format(amount)} recorded and invoice updated!`);
         onSuccess();
       } else {
         toast.error(data.error || "Payment recording failed.");
@@ -531,7 +559,7 @@ function PaymentModal({
             >
               {invoices.map((inv) => (
                 <option key={inv.id} value={inv.id}>
-                  {inv.invoice_number} — Total: ${inv.total_amount} (Paid: ${inv.amount_paid}) — {inv.status.toUpperCase()}
+                  {inv.invoice_number} — Total: {paymentFormatter.format(inv.total_amount)} (Paid: {paymentFormatter.format(inv.amount_paid)}) — {inv.status.toUpperCase()}
                 </option>
               ))}
             </select>
@@ -541,15 +569,15 @@ function PaymentModal({
             <div className="panel neumorph" style={{ padding: "14px 16px", marginBottom: "16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <small className="muted">Total Invoice: ${currentInvoice.total_amount}</small>
+                  <small className="muted">Total Invoice: {paymentFormatter.format(currentInvoice.total_amount)}</small>
                   <div style={{ color: "var(--green)", fontSize: "11px", fontWeight: 600 }}>
-                    Already Paid: ${currentInvoice.amount_paid}
+                    Already Paid: {paymentFormatter.format(currentInvoice.amount_paid)}
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <small className="muted">REMAINING BALANCE</small>
                   <strong style={{ display: "block", fontSize: "20px", color: "var(--blue)" }}>
-                    ${remainingBalance.toFixed(2)}
+                    {paymentFormatter.format(remainingBalance)}
                   </strong>
                 </div>
               </div>
@@ -558,7 +586,7 @@ function PaymentModal({
 
           <div className="form-row-2">
             <div className="form-group">
-              <label>Payment Amount ($)</label>
+              <label>Payment Amount ({paymentCurrency})</label>
               <input
                 type="number"
                 step="0.01"
@@ -572,7 +600,7 @@ function PaymentModal({
               />
               {isOverpayment && (
                 <small style={{ color: "#ef4444", fontSize: "10px", marginTop: "4px" }}>
-                  Exceeds remaining balance by ${(amount - remainingBalance).toFixed(2)}! Overpayment rejected.
+                  Exceeds remaining balance by {paymentFormatter.format(amount - remainingBalance)}. Overpayment rejected.
                 </small>
               )}
             </div>
@@ -616,7 +644,7 @@ function PaymentModal({
               className="primary-cta"
               disabled={busy || isOverpayment || amount <= 0}
             >
-              {busy ? "Reconciling..." : `Record Payment ($${amount.toFixed(2)})`}
+              {busy ? "Reconciling..." : `Record Payment (${paymentFormatter.format(amount)})`}
             </button>
           </div>
         </form>
@@ -627,19 +655,31 @@ function PaymentModal({
 
 function AdjustmentModal({
   clients,
+  subscriptions,
+  invoices,
   onClose,
   onSuccess,
 }: {
   clients: Client[];
+  subscriptions: Subscription[];
+  invoices: Invoice[];
   onClose: () => void;
   onSuccess: () => void;
 }) {
   const [clientId, setClientId] = useState<string>(clients[0]?.id || "");
-  const [type, setType] = useState<"free_days" | "discount_percent" | "fixed_credit" | "manual_waiver">("free_days");
+  const [type, setType] = useState<BillingAdjustment["adjustment_type"]>("free_days");
+  const [target, setTarget] = useState("");
   const [amountDelta, setAmountDelta] = useState<number>(0);
   const [daysDelta, setDaysDelta] = useState<number>(14);
   const [description, setDescription] = useState<string>("Complimentary onboarding extension");
   const [busy, setBusy] = useState(false);
+  const clientSubscriptions = subscriptions.filter((subscription) => subscription.client_id === clientId);
+  const clientInvoices = invoices.filter((invoice) => invoice.client_id === clientId);
+
+  useEffect(() => {
+    const first = clientSubscriptions[0] ? `subscription:${clientSubscriptions[0].id}` : clientInvoices[0] ? `invoice:${clientInvoices[0].id}` : "";
+    setTarget(first);
+  }, [clientId, subscriptions, invoices]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -651,8 +691,10 @@ function AdjustmentModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           client_id: clientId,
+          subscription_id: target.startsWith("subscription:") ? target.slice("subscription:".length) : undefined,
+          invoice_id: target.startsWith("invoice:") ? target.slice("invoice:".length) : undefined,
           adjustment_type: type,
-          amount_delta: amountDelta,
+          amount_delta: ["discount", "credit"].includes(type) ? -Math.abs(amountDelta) : amountDelta,
           days_delta: daysDelta,
           description,
           applied: true,
@@ -700,20 +742,31 @@ function AdjustmentModal({
             </select>
           </div>
 
+          <div className="form-group">
+            <label>Apply To</label>
+            <select value={target} onChange={(e) => setTarget(e.target.value)} required>
+              {clientSubscriptions.map((subscription) => <option key={subscription.id} value={`subscription:${subscription.id}`}>Subscription · {subscription.service_name}</option>)}
+              {clientInvoices.map((invoice) => <option key={invoice.id} value={`invoice:${invoice.id}`}>Invoice · {invoice.invoice_number}</option>)}
+            </select>
+            {!target && <small style={{ color: "var(--amber)" }}>This client needs a subscription or invoice before an adjustment can be applied.</small>}
+          </div>
+
           <div className="form-row-2">
             <div className="form-group">
               <label>Adjustment Type</label>
               <select value={type} onChange={(e) => setType(e.target.value as any)}>
                 <option value="free_days">Free Days (Grace / Extension)</option>
-                <option value="fixed_credit">Fixed Credit ($ Credit)</option>
-                <option value="discount_percent">Discount Percentage (%)</option>
-                <option value="manual_waiver">Manual Fee Waiver</option>
+                <option value="goodwill_extension">Goodwill Extension</option>
+                <option value="credit">Fixed Credit</option>
+                <option value="discount">Discount Amount</option>
+                <option value="pause">Pause Subscription</option>
+                <option value="renewal_date_change">Renewal Date Change</option>
               </select>
             </div>
 
             <div className="form-group">
-              <label>{type === "free_days" ? "Days Added" : "Credit Amount ($)"}</label>
-              {type === "free_days" ? (
+              <label>{["free_days", "goodwill_extension", "renewal_date_change"].includes(type) ? "Days Adjustment" : "Amount Adjustment"}</label>
+              {["free_days", "goodwill_extension", "renewal_date_change"].includes(type) ? (
                 <input
                   type="number"
                   value={daysDelta}
@@ -743,7 +796,7 @@ function AdjustmentModal({
             <button type="button" className="secondary-cta" onClick={onClose} disabled={busy}>
               Cancel
             </button>
-            <button type="submit" className="primary-cta" disabled={busy}>
+            <button type="submit" className="primary-cta" disabled={busy || !target}>
               {busy ? "Applying..." : "Apply Adjustment"}
             </button>
           </div>

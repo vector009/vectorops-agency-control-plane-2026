@@ -6,6 +6,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { ClientPortal } from "./pages/ClientPortal";
 import { Home, CommandCenter, LoginPanel } from "./pages/Home";
 import NotFound from "./pages/NotFound";
+import { PasswordRecoveryRequest, PasswordReset } from "./pages/AuthRecovery";
 
 function Router() {
   const [, navigate] = useLocation();
@@ -29,6 +30,8 @@ function Router() {
           <CommandCenter onLogout={() => { navigate("/"); setLoginMode(null); }} />
         </Route>
         <Route path="/portal/:slug" component={ClientPortal} />
+        <Route path="/auth/forgot" component={PasswordRecoveryRequest} />
+        <Route path="/auth/reset" component={PasswordReset} />
         <Route path="/404" component={NotFound} />
         <Route component={NotFound} />
       </Switch>

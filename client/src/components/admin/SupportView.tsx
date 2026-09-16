@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { SupportTicket, Client } from "@/types/vectorops";
+import { apiFetch as fetch } from "@/lib/api";
 
 export function SupportView() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
@@ -22,6 +23,8 @@ export function SupportView() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTicket, setActiveTicket] = useState<SupportTicket | null>(null);
   const [internalNotes, setInternalNotes] = useState("");
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
 
   const loadData = () => {
     setLoading(true);
@@ -60,15 +63,54 @@ export function SupportView() {
 
   const openTicket = (t: SupportTicket) => {
     setActiveTicket(t);
-    setInternalNotes(t.internal_notes || "");
+    setInternalNotes("");
+    setReply("");
   };
 
-  const handleUpdateTicketStatus = (nextStatus: SupportTicket["status"]) => {
+  const handleUpdateTicketStatus = async (nextStatus: SupportTicket["status"], closeAfter = false) => {
     if (!activeTicket) return;
-    activeTicket.status = nextStatus;
-    activeTicket.internal_notes = internalNotes;
-    setTickets((prev) => prev.map((t) => (t.id === activeTicket.id ? { ...t, status: nextStatus, internal_notes: internalNotes } : t)));
-    toast.success(`Ticket marked as ${nextStatus}`);
+    try {
+      const response = await fetch(`/api/admin/support-tickets/${activeTicket.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus, priority: activeTicket.priority, internal_notes: internalNotes }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "Ticket update failed.");
+      const updated = { ...activeTicket, ...result.ticket, status: nextStatus, internal_notes: internalNotes ? [activeTicket.internal_notes, internalNotes].filter(Boolean).join("\n\n") : activeTicket.internal_notes };
+      setTickets((prev) => prev.map((ticket) => ticket.id === activeTicket.id ? updated : ticket));
+      setActiveTicket(closeAfter ? null : updated);
+      setInternalNotes("");
+      toast.success(`Ticket marked as ${nextStatus.replace("_", " ")}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Ticket update failed.");
+    }
+  };
+
+  const handleReply = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!activeTicket || !reply.trim()) return;
+    setSending(true);
+    try {
+      const response = await fetch(`/api/admin/support-tickets/${activeTicket.id}/messages`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: reply.trim() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "Reply failed.");
+      const updated = { ...activeTicket, status: "pending_client" as const, messages: [...(activeTicket.messages || []), result.message] };
+      setActiveTicket(updated);
+      setTickets((current) => current.map((ticket) => ticket.id === updated.id ? updated : ticket));
+      setReply("");
+      toast.success("Client-visible reply sent.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Reply failed.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -96,7 +138,7 @@ export function SupportView() {
         </div>
 
         <div className="tab-group" style={{ marginBottom: 0 }}>
-          {["all", "open", "in_progress", "resolved", "closed"].map((st) => (
+          {["all", "open", "pending_admin", "pending_client", "resolved", "closed"].map((st) => (
             <button
               key={st}
               className={`tab-btn ${statusFilter === st ? "active" : ""}`}
@@ -158,7 +200,7 @@ export function SupportView() {
                       className={`badge badge-${
                         t.status === "open"
                           ? "amber"
-                          : t.status === "in_progress"
+                          : t.status === "pending_admin"
                           ? "blue"
                           : "green"
                       }`}
@@ -211,6 +253,26 @@ export function SupportView() {
               <p style={{ margin: "8px 0 0", fontSize: "13px", lineHeight: 1.6 }}>{activeTicket.description}</p>
             </div>
 
+            <div className="panel neumorph" style={{ padding: "16px", marginBottom: "16px" }}>
+              <span className="eyebrow">CLIENT-VISIBLE CONVERSATION</span>
+              <div className="conversation-thread" style={{ marginTop: "12px" }}>
+                {(activeTicket.messages || []).map((message, index) => (
+                  <div className="conversation-message operator" key={message.id || index}>
+                    <div><strong>{message.sender_user_id ? "Participant" : "System"}</strong><time>{new Date(message.created_at).toLocaleString()}</time></div>
+                    <p>{message.message}</p>
+                  </div>
+                ))}
+                {!(activeTicket.messages || []).length && <div className="empty-cell">No conversation messages are available.</div>}
+              </div>
+              {activeTicket.status !== "closed" && (
+                <form onSubmit={handleReply} className="conversation-reply" style={{ marginTop: "12px" }}>
+                  <label>Reply to client</label>
+                  <textarea rows={3} value={reply} onChange={(event) => setReply(event.target.value)} maxLength={5000} required />
+                  <button className="primary-cta" disabled={sending}><MessageSquare size={14} /> {sending ? "Sending…" : "Send visible reply"}</button>
+                </form>
+              )}
+            </div>
+
             {/* Section 56: Confidential Internal Operator Notes */}
             <div
               className="panel neumorph"
@@ -231,7 +293,7 @@ export function SupportView() {
                 rows={3}
                 value={internalNotes}
                 onChange={(e) => setInternalNotes(e.target.value)}
-                placeholder="Private operator triage notes, n8n error traces, or resolution thoughts..."
+                placeholder="Add a new private operator note…"
                 style={{
                   width: "100%",
                   background: "var(--surface)",
@@ -242,17 +304,30 @@ export function SupportView() {
                   color: "var(--ink)",
                 }}
               />
+              {activeTicket.internal_notes && <div style={{ marginTop: "10px", whiteSpace: "pre-wrap", color: "var(--muted)", fontSize: "11px" }}><strong style={{ color: "var(--ink)" }}>Previous internal notes</strong><br />{activeTicket.internal_notes}</div>}
             </div>
 
             {/* Status Transition Actions */}
+            <div className="form-row-2" style={{ marginBottom: "16px" }}>
+              <label className="form-group">Priority
+                <select value={activeTicket.priority} onChange={(event) => setActiveTicket({ ...activeTicket, priority: event.target.value as SupportTicket["priority"] })}>
+                  <option value="low">Low</option><option value="normal">Normal</option><option value="high">High</option><option value="urgent">Urgent</option>
+                </select>
+              </label>
+              <button className="secondary-cta" type="button" onClick={async () => {
+                const response = await fetch(`/api/admin/support-tickets/${activeTicket.id}`, { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: activeTicket.status, priority: activeTicket.priority, internal_notes: internalNotes, assign_to_me: true }) });
+                const result = await response.json();
+                if (response.ok && result.ok) { const updated = { ...activeTicket, ...result.ticket, internal_notes: internalNotes ? [activeTicket.internal_notes, internalNotes].filter(Boolean).join("\n\n") : activeTicket.internal_notes }; setActiveTicket(updated); setTickets((current) => current.map((ticket) => ticket.id === updated.id ? updated : ticket)); setInternalNotes(""); toast.success("Ticket assigned to you."); } else toast.error(result.error || "Assignment failed.");
+              }}>Assign to me</button>
+            </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: "16px" }}>
               <span style={{ fontSize: "11px", color: "var(--muted)", font: "10px 'DM Mono', monospace" }}>
                 Current Status: <strong>{activeTicket.status.toUpperCase()}</strong>
               </span>
               <div style={{ display: "flex", gap: "8px" }}>
-                {activeTicket.status !== "in_progress" && (
-                  <button className="action-pill" onClick={() => handleUpdateTicketStatus("in_progress")}>
-                    Mark In Progress
+                {activeTicket.status !== "pending_admin" && (
+                  <button className="action-pill" onClick={() => handleUpdateTicketStatus("pending_admin")}>
+                    Mark Pending Admin
                   </button>
                 )}
                 {activeTicket.status !== "resolved" && (
@@ -264,7 +339,8 @@ export function SupportView() {
                     Resolve Ticket
                   </button>
                 )}
-                <button className="primary-cta" onClick={() => setActiveTicket(null)}>
+                {activeTicket.status !== "closed" && <button className="action-pill danger" onClick={() => handleUpdateTicketStatus("closed")}>Close Ticket</button>}
+                <button className="primary-cta" onClick={() => handleUpdateTicketStatus(activeTicket.status, true)}>
                   Save & Close
                 </button>
               </div>

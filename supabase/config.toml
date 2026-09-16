@@ -1,0 +1,4 @@
+[functions.vectorops-api]
+# Public health and n8n webhook routes share this function, so JWT validation is
+# performed inside the router on every protected route.
+verify_jwt = false

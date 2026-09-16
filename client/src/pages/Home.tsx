@@ -39,7 +39,11 @@ import { SupportView } from "@/components/admin/SupportView";
 import { CalendarView } from "@/components/admin/CalendarView";
 import { TasksView } from "@/components/admin/TasksView";
 import { SettingsView } from "@/components/admin/SettingsView";
+import { ActivityView } from "@/components/admin/ActivityView";
+import { AuditView } from "@/components/admin/AuditView";
 import { OnboardingWizard } from "@/components/admin/OnboardingWizard";
+import { edgeApiUrl } from "@/lib/supabase";
+import { apiFetch as fetch, signInForRole, signOut } from "@/lib/api";
 
 const nav = [
   ["Overview", LayoutDashboard],
@@ -50,6 +54,8 @@ const nav = [
   ["Tasks", Check],
   ["Support", Ticket],
   ["Infrastructure", Network],
+  ["Activity", Activity],
+  ["Audit", ShieldCheck],
   ["Settings", Settings2],
 ] as const;
 
@@ -124,7 +130,7 @@ export function Home({ onAdmin, onClient }: { onAdmin: () => void; onClient: () 
           </div>
           <div className="trust-row">
             <ShieldCheck size={16} />
-            <span>Master Auth verified</span>
+            <span>Signed session security</span>
             <span className="separator" />
             <span>Multi-tenant isolated</span>
             <span className="separator" />
@@ -158,7 +164,7 @@ export function Home({ onAdmin, onClient }: { onAdmin: () => void; onClient: () 
                 <span className="node-no">{no}</span>
                 <strong>{name}</strong>
                 <small>
-                  <StatusDot /> synchronized
+                  <StatusDot /> managed plane
                 </small>
               </div>
             ))}
@@ -185,7 +191,7 @@ export function Home({ onAdmin, onClient }: { onAdmin: () => void; onClient: () 
 
 export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClose: () => void }) {
   const [, navigate] = useLocation();
-  const [email, setEmail] = useState(mode === "admin" ? "admin@vectorops.ai" : "sarah@apexdental.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -193,6 +199,13 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
     e.preventDefault();
     setBusy(true);
     try {
+      if (edgeApiUrl) {
+        const user = await signInForRole(email, password, mode);
+        toast.success(mode === "admin" ? "Admin authentication confirmed." : "Client authentication confirmed.");
+        onClose();
+        navigate(mode === "admin" ? "/admin" : `/portal/${user?.slug}`);
+        return;
+      }
       const response = await fetch(`/api/auth/${mode}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -229,7 +242,7 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
         <h2>{mode === "admin" ? "LOGIN AS ADMIN" : "CLIENT PORTAL LOGIN"}</h2>
         <p>
           {mode === "admin"
-            ? "Sign in with your verified Supabase administrator credentials."
+            ? "Sign in with your verified administrator credentials."
             : "Sign in with your tenant account email and password."}
         </p>
         <form onSubmit={submit}>
@@ -239,6 +252,7 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               type="email"
+              autoComplete="email"
               placeholder={mode === "admin" ? "admin@vectorops.ai" : "sarah@apexdental.com"}
               required
               autoFocus
@@ -250,17 +264,21 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               type="password"
+              autoComplete="current-password"
               placeholder="••••••••••••"
               required
             />
           </label>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
+            <a className="text-button" href={`/auth/forgot?mode=${mode}`}>Forgot password?</a>
+          </div>
           <Button className="primary-cta full" type="submit" disabled={busy} style={{ marginTop: "12px" }}>
             {busy ? "Authenticating..." : "LOGIN"}
             <ChevronRight size={16} />
           </Button>
         </form>
         <div className="login-note">
-          <ShieldCheck size={15} /> Supabase Auth & Role-Based Access Control verified.
+          <ShieldCheck size={15} /> Signed sessions and role-based access control.
         </div>
       </div>
     </div>
@@ -275,6 +293,14 @@ export function CommandCenter({ onLogout }: { onLogout: () => void }) {
   const [authorized, setAuthorized] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+
+  const logout = async () => {
+    try {
+      await signOut();
+    } finally {
+      onLogout();
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -343,10 +369,10 @@ export function CommandCenter({ onLogout }: { onLogout: () => void }) {
             <ShieldCheck size={15} />
             <span>
               <strong>3-Plane Control</strong>
-              <small>Master Key Active</small>
+              <small>Session verified</small>
             </span>
           </div>
-          <button className="logout" onClick={onLogout}>
+          <button className="logout" onClick={logout}>
             <LogOut size={16} /> Sign out
           </button>
         </div>
@@ -401,6 +427,10 @@ export function CommandCenter({ onLogout }: { onLogout: () => void }) {
 
           {active === "Tasks" && <TasksView />}
 
+          {active === "Activity" && <ActivityView />}
+
+          {active === "Audit" && <AuditView />}
+
           {active === "Settings" && <SettingsView />}
         </div>
       </main>
@@ -418,4 +448,3 @@ export function CommandCenter({ onLogout }: { onLogout: () => void }) {
     </div>
   );
 }
-

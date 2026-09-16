@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { AutomationTemplate, N8nInstance } from "@/types/vectorops";
+import { apiFetch as fetch } from "@/lib/api";
 
 interface OnboardingWizardProps {
   onClose: () => void;
@@ -39,7 +40,16 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
     slug: "",
     portal_title: "",
     primary_color: "#346bf2",
-    enabled_modules: ["automations", "results", "invoices", "support"],
+    accent_color: "#8b68df",
+    logo_url: "",
+    enabled_modules: ["overview", "automations", "results", "billing", "support", "profile"],
+    dashboard_config: { industry: "professional_services" },
+    kpi_config: [
+      { key: "lead_captured", label: "New leads" },
+      { key: "appointment_booked", label: "Appointments booked" },
+      { key: "review_received", label: "Reviews received" },
+    ],
+    terminology: { leads: "Leads", conversions: "Conversions" },
 
     // Step 3: Subscription
     service_name: "Monthly AI Automation & Lead Operations Retainer",
@@ -50,13 +60,13 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
 
     // Step 4: Infrastructure
     infrastructure_type: "shared" as "shared" | "dedicated",
-    n8n_instance_id: "inst-shared-01",
+    n8n_instance_id: "",
 
     // Step 5: Templates
-    selected_templates: ["tmpl-lead-recovery"] as string[],
+    selected_templates: [] as string[],
 
     // Step 6: Client Authentication
-    client_password: "client2026!",
+    client_password: "",
   });
 
   useEffect(() => {
@@ -66,7 +76,11 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
       fetch("/api/admin/data/n8n_instances", { credentials: "include" }).then((r) => r.json()),
     ]).then(([tmplRes, instRes]) => {
       if (tmplRes.ok) setTemplates(tmplRes.rows || []);
-      if (instRes.ok) setInstances(instRes.rows || []);
+      if (instRes.ok) {
+        const rows = instRes.rows || [];
+        setInstances(rows);
+        if (rows[0]) setForm((current) => current.n8n_instance_id ? current : { ...current, n8n_instance_id: rows[0].id });
+      }
     });
   }, []);
 
@@ -110,7 +124,7 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
       });
       const data = await res.json();
       if (data.ok) {
-        toast.success(`Tenant ${form.company_name} onboarded successfully!`);
+        toast.success(`Tenant ${form.company_name} created. Continue the persisted onboarding checklist to verify n8n and deliver access.`);
         onComplete();
       } else {
         toast.error(data.error || "Onboarding failed.");
@@ -129,7 +143,7 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
     { num: 4, label: "Infrastructure" },
     { num: 5, label: "Automations" },
     { num: 6, label: "Security & Auth" },
-    { num: 7, label: "Review & Launch" },
+    { num: 7, label: "Review & Create" },
   ];
 
   return (
@@ -142,7 +156,7 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
               <span className="signal" /> TENANT ONBOARDING ENGINE / STEP {step} OF 7
             </div>
             <h2>{stepsList[step - 1].label}</h2>
-            <p>Provision the complete 3-plane operating environment for this new client.</p>
+            <p>Create the tenant foundation. Execution, verification, and access delivery remain incomplete until confirmed in the client checklist.</p>
           </div>
           <button className="close-button" onClick={onClose}>
             <X size={18} />
@@ -245,6 +259,50 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
               />
             </label>
             <label>
+              Secondary Brand Accent
+              <input
+                type="color"
+                value={form.accent_color}
+                onChange={(e) => update("accent_color", e.target.value)}
+                style={{ height: "42px", padding: "4px" }}
+              />
+            </label>
+            <label style={{ gridColumn: "1/-1" }}>
+              Logo URL
+              <input value={form.logo_url} onChange={(e) => update("logo_url", e.target.value)} placeholder="https://cdn.example.com/client-logo.png" />
+            </label>
+            <label>
+              Primary KPI Label
+              <input
+                value={String(form.kpi_config[0]?.label || "")}
+                onChange={(e) => update("kpi_config", [{ ...form.kpi_config[0], label: e.target.value }, ...form.kpi_config.slice(1)])}
+                placeholder="New patients"
+              />
+            </label>
+            <label>
+              Primary KPI Event Key
+              <input
+                value={String(form.kpi_config[0]?.key || "")}
+                onChange={(e) => update("kpi_config", [{ ...form.kpi_config[0], key: e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "_") }, ...form.kpi_config.slice(1)])}
+                placeholder="lead_captured"
+              />
+            </label>
+            <div style={{ gridColumn: "1/-1" }}>
+              <span className="eyebrow" style={{ marginBottom: "8px" }}>ENABLED CLIENT MODULES</span>
+              <div className="module-picker">
+                {["overview", "automations", "results", "billing", "support", "profile"].map((module) => (
+                  <label className="module-option" key={module}>
+                    <input
+                      type="checkbox"
+                      checked={form.enabled_modules.includes(module)}
+                      onChange={() => update("enabled_modules", form.enabled_modules.includes(module) ? form.enabled_modules.filter((item) => item !== module) : [...form.enabled_modules, module])}
+                    />
+                    {module.replace("_", " ")}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <label>
               Portal URL Preview
               <input
                 value={`/portal/${form.slug}`}
@@ -266,12 +324,22 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
               />
             </label>
             <label>
-              Monthly Retainer Amount ($)
+              Monthly Retainer Amount
               <input
                 type="number"
                 value={form.monthly_amount}
                 onChange={(e) => update("monthly_amount", Number(e.target.value))}
               />
+            </label>
+            <label>
+              Billing Currency
+              <select value={form.currency} onChange={(e) => update("currency", e.target.value)}>
+                <option value="USD">USD — US Dollar</option>
+                <option value="INR">INR — Indian Rupee</option>
+                <option value="GBP">GBP — British Pound</option>
+                <option value="EUR">EUR — Euro</option>
+                <option value="AUD">AUD — Australian Dollar</option>
+              </select>
             </label>
             <label>
               Billing Day of Month (1 - 28)
@@ -344,7 +412,7 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
         {step === 5 && (
           <div>
             <p style={{ fontSize: "12px", color: "var(--muted)", marginBottom: "14px" }}>
-              Select initial automation workflows to deploy for this tenant:
+              Select automation templates for the onboarding plan. A template is deployed only later through an explicit, verified n8n deployment:
             </p>
             <div style={{ display: "grid", gap: "10px" }}>
               {templates.map((t) => {
@@ -390,13 +458,15 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
             <label style={{ gridColumn: "1/-1" }}>
               Initial Client Password *
               <input
-                type="text"
+                type="password"
                 value={form.client_password}
                 onChange={(e) => update("client_password", e.target.value)}
+                minLength={12}
+                autoComplete="new-password"
                 required
               />
               <small style={{ textTransform: "none", color: "var(--muted)", marginTop: "6px", display: "block" }}>
-                A Supabase Auth user will be provisioned for <strong>{form.email || "the client's email"}</strong> with role <code>client</code> and linked to portal <code>/portal/{form.slug}</code>.
+                Use at least 12 characters. The password is sent directly to Supabase Auth and is never stored in VectorOps application tables.
               </small>
             </label>
           </div>
@@ -423,12 +493,12 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
                 </div>
                 <div>
                   <small className="muted">Automations</small>
-                  <p style={{ margin: "2px 0 8px", fontWeight: 600 }}>{form.selected_templates.length} template(s) queued</p>
+                  <p style={{ margin: "2px 0 8px", fontWeight: 600 }}>{form.selected_templates.length} template(s) selected for review</p>
                 </div>
               </div>
             </div>
             <div style={{ display: "flex", gap: "8px", alignItems: "center", color: "var(--green)", font: "10px 'DM Mono', monospace" }}>
-              <CheckCircle2 size={16} /> Ready to initialize business, control, and execution planes.
+              <CheckCircle2 size={16} /> Ready to create the tenant foundation. This does not claim n8n verification or access delivery.
             </div>
           </div>
         )}
@@ -446,7 +516,7 @@ export function OnboardingWizard({ onClose, onComplete }: OnboardingWizardProps)
             </button>
           ) : (
             <button type="button" className="primary-cta" onClick={handleSubmit} disabled={busy}>
-              {busy ? "Provisioning Tenant..." : "Complete & Launch Portal"} <ArrowUpRight size={16} />
+              {busy ? "Creating Tenant..." : "Create Tenant & Continue Setup"} <ArrowUpRight size={16} />
             </button>
           )}
         </div>
