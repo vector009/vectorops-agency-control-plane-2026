@@ -38,6 +38,7 @@ export interface ClientPortalConfig {
   slug: string;
   portal_title: string;
   logo_url: string | null;
+  favicon_url?: string | null;
   primary_color: string;
   accent_color: string;
   enabled_modules: string[];
@@ -185,6 +186,14 @@ export interface SupportTicketRecord {
   priority: "low" | "medium" | "high" | "urgent";
   category: string;
   internal_notes: string | null;
+  messages?: Array<{
+    id: string;
+    ticket_id: string;
+    sender_user_id: string | null;
+    message: string;
+    internal: boolean;
+    created_at: string;
+  }>;
   created_at: string;
 }
 
@@ -286,7 +295,7 @@ class VectorOpsStore {
       logo_url: null,
       primary_color: "#346bf2",
       accent_color: "#2aa876",
-      enabled_modules: ["Overview", "Automations", "Results", "Billing", "Support"],
+      enabled_modules: ["overview", "automations", "results", "billing", "support"],
       dashboard_config: { industry: "dental", kpi_focus: "patients" },
       kpi_config: { primary: "New Patients", secondary: "Reviews Generated" },
       terminology: { leads: "New Patient Inquiries", conversions: "Treatments Booked" },
@@ -299,7 +308,7 @@ class VectorOpsStore {
       logo_url: null,
       primary_color: "#2aa876",
       accent_color: "#e3993d",
-      enabled_modules: ["Overview", "Automations", "Results", "Billing", "Support"],
+      enabled_modules: ["overview", "automations", "results", "billing", "support"],
       dashboard_config: { industry: "fitness", kpi_focus: "memberships" },
       kpi_config: { primary: "Trial Bookings", secondary: "Missed Calls Recovered" },
       terminology: { leads: "Trial Inquiries", conversions: "Memberships Sold" },
@@ -312,7 +321,7 @@ class VectorOpsStore {
       logo_url: null,
       primary_color: "#8b68df",
       accent_color: "#346bf2",
-      enabled_modules: ["Overview", "Automations", "Results", "Billing", "Support"],
+      enabled_modules: ["overview", "automations", "results", "billing", "support"],
       dashboard_config: { industry: "real_estate", kpi_focus: "property_leads" },
       kpi_config: { primary: "Property Inquiries", secondary: "Site Tours Booked" },
       terminology: { leads: "Buyer Inquiries", conversions: "Tours Scheduled" },
@@ -325,7 +334,7 @@ class VectorOpsStore {
       logo_url: null,
       primary_color: "#346bf2",
       accent_color: "#2aa876",
-      enabled_modules: ["Overview", "Automations", "Results", "Billing", "Support"],
+      enabled_modules: ["overview", "automations", "results", "billing", "support"],
       dashboard_config: { industry: "dental", kpi_focus: "patients" },
       kpi_config: { primary: "New Patients", secondary: "Reviews Generated" },
       terminology: { leads: "New Patient Inquiries", conversions: "Treatments Booked" },
@@ -362,7 +371,7 @@ class VectorOpsStore {
       {
         id: "usr-sarah-dental",
         email: "sarah@apexdental.com",
-        password: "client2026!",
+        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
         role: "client",
         client_id: "cli-acme-dental",
         full_name: "Dr. Sarah Jenkins",
@@ -373,7 +382,7 @@ class VectorOpsStore {
       {
         id: "usr-sarah-dental",
         email: "sarah@acmedental.com",
-        password: "client2026!",
+        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
         role: "client",
         client_id: "cli-acme-dental",
         full_name: "Dr. Sarah Jenkins",
@@ -384,7 +393,7 @@ class VectorOpsStore {
       {
         id: "usr-marcus-fitness",
         email: "mark@elitefitness.com",
-        password: "client2026!",
+        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
         role: "client",
         client_id: "cli-elite-fitness",
         full_name: "Mark Reynolds",
@@ -395,7 +404,7 @@ class VectorOpsStore {
       {
         id: "usr-marcus-fitness",
         email: "marcus@elitefitness.com",
-        password: "client2026!",
+        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
         role: "client",
         client_id: "cli-elite-fitness",
         full_name: "Marcus Vance",
@@ -406,7 +415,7 @@ class VectorOpsStore {
       {
         id: "usr-david-realty",
         email: "david@apexrealty.com",
-        password: "client2026!",
+        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
         role: "client",
         client_id: "cli-apex-realty",
         full_name: "David Sterling",
@@ -1136,15 +1145,9 @@ class VectorOpsStore {
     if (!wf) throw new Error("Workflow not found.");
 
     wf.desired_state = desired;
-    wf.sync_status = "synchronizing";
+    wf.sync_status = "error";
+    wf.last_error = "Live n8n control is unavailable in the local demonstration store.";
     wf.updated_at = new Date().toISOString();
-
-    // Trigger asynchronous control plane synchronization to simulate / execute real n8n reconciliation
-    setTimeout(() => {
-      wf.actual_state = desired;
-      wf.sync_status = "synchronized";
-      wf.updated_at = new Date().toISOString();
-    }, 1200);
 
     this.auditLogs.unshift({
       id: `aud-${Date.now()}`,
@@ -1208,7 +1211,7 @@ class VectorOpsStore {
       logo_url: null,
       primary_color: payload.primary_color || "#346bf2",
       accent_color: "#2aa876",
-      enabled_modules: payload.enabled_modules || ["Overview", "Automations", "Results", "Billing", "Support"],
+      enabled_modules: (payload.enabled_modules || ["overview", "automations", "results", "billing", "support"]).map((module) => module.toLowerCase()),
       dashboard_config: { custom_welcome: true },
       kpi_config: { primary: "Leads Recovered", secondary: "Revenue Influenced" },
       terminology: { leads: "Leads", conversions: "Conversions" },

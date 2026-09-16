@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { Task, Client } from "@/types/vectorops";
+import { apiFetch as fetch } from "@/lib/api";
 
 export function TasksView() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -39,12 +40,22 @@ export function TasksView() {
   const clientMap = new Map<string, string>();
   clients.forEach((c) => clientMap.set(c.id, c.company_name));
 
-  const toggleTask = (task: Task) => {
-    const nextStatus = task.status === "done" ? "todo" : task.status === "todo" ? "in_progress" : "done";
-    setTasks((prev) =>
-      prev.map((t) => (t.id === task.id ? { ...t, status: nextStatus, completed_at: nextStatus === "done" ? new Date().toISOString() : null } : t))
-    );
-    toast.success(`Task marked as ${nextStatus.replace("_", " ")}`);
+  const toggleTask = async (task: Task) => {
+    const nextStatus: Task["status"] = task.status === "completed" ? "todo" : task.status === "todo" ? "in_progress" : "completed";
+    try {
+      const response = await fetch(`/api/admin/tasks/${task.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "Task update failed.");
+      setTasks((prev) => prev.map((item) => item.id === task.id ? { ...item, ...result.task } : item));
+      toast.success(`Task marked as ${nextStatus.replace("_", " ")}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Task update failed.");
+    }
   };
 
   const filteredTasks = useMemo(() => {
@@ -68,7 +79,7 @@ export function TasksView() {
       </div>
 
       <div className="tab-group">
-        {["all", "todo", "in_progress", "review", "done"].map((s) => (
+        {["all", "todo", "in_progress", "blocked", "completed", "cancelled"].map((s) => (
           <button
             key={s}
             className={`tab-btn ${statusFilter === s ? "active" : ""}`}
@@ -107,17 +118,17 @@ export function TasksView() {
                 <tr key={t.id} onClick={() => toggleTask(t)}>
                   <td>
                     <button
-                      style={{ background: "transparent", border: 0, color: t.status === "done" ? "var(--green)" : "var(--muted)" }}
+                      style={{ background: "transparent", border: 0, color: t.status === "completed" ? "var(--green)" : "var(--muted)" }}
                       onClick={(e) => {
                         e.stopPropagation();
                         toggleTask(t);
                       }}
                     >
-                      {t.status === "done" ? <CheckCircle2 size={18} /> : <Circle size={18} />}
+                      {t.status === "completed" ? <CheckCircle2 size={18} /> : <Circle size={18} />}
                     </button>
                   </td>
                   <td>
-                    <strong style={{ textDecoration: t.status === "done" ? "line-through" : "none", color: t.status === "done" ? "var(--muted)" : "inherit" }}>
+                    <strong style={{ textDecoration: t.status === "completed" ? "line-through" : "none", color: t.status === "completed" ? "var(--muted)" : "inherit" }}>
                       {t.title}
                     </strong>
                     {t.description && <small style={{ display: "block", color: "var(--muted)" }}>{t.description}</small>}
@@ -135,7 +146,7 @@ export function TasksView() {
                   <td>
                     <span
                       className={`badge badge-${
-                        t.status === "done" ? "green" : t.status === "in_progress" ? "blue" : "muted"
+                        t.status === "completed" ? "green" : t.status === "in_progress" ? "blue" : t.status === "blocked" ? "red" : "muted"
                       }`}
                     >
                       {t.status.replace("_", " ")}

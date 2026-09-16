@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { CalendarEvent, Client } from "@/types/vectorops";
+import { apiFetch as fetch } from "@/lib/api";
 
 export function CalendarView() {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -81,15 +82,13 @@ export function CalendarView() {
                 <tr key={ev.id}>
                   <td>
                     <strong>{ev.title}</strong>
-                    {ev.notes && <small style={{ display: "block", color: "var(--muted)" }}>{ev.notes}</small>}
+                    {(ev.description || ev.notes) && <small style={{ display: "block", color: "var(--muted)" }}>{ev.description || ev.notes}</small>}
                   </td>
                   <td>{ev.client_id ? clientMap.get(ev.client_id) || ev.client_id : "Global / Agency"}</td>
                   <td>
                     <span
                       className={`badge badge-${
-                        ev.event_type === "invoice_due"
-                          ? "red"
-                          : ev.event_type === "renewal"
+                        ev.event_type === "renewal"
                           ? "green"
                           : ev.event_type === "meeting"
                           ? "blue"
@@ -202,9 +201,11 @@ function CreateEventModal({
               <label>Event Type</label>
               <select value={type} onChange={(e) => setType(e.target.value as any)}>
                 <option value="meeting">Client Meeting</option>
-                <option value="invoice_due">Invoice Due Date</option>
+                <option value="call">Client Call</option>
+                <option value="onboarding">Onboarding Milestone</option>
                 <option value="renewal">Retainer Renewal</option>
-                <option value="maintenance">System Maintenance</option>
+                <option value="internal">Internal / Maintenance</option>
+                <option value="other">Other</option>
               </select>
             </div>
 

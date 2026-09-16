@@ -16,7 +16,8 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { Workflow, DiscoveredWorkflow, AutomationTemplate, Client } from "@/types/vectorops";
+import { apiFetch as fetch } from "@/lib/api";
+import type { Workflow, DiscoveredWorkflow, AutomationTemplate, Client, N8nInstance } from "@/types/vectorops";
 
 export function AutomationsView() {
   const [tab, setTab] = useState<"managed" | "discovered" | "templates">("managed");
@@ -24,34 +25,64 @@ export function AutomationsView() {
   const [discovered, setDiscovered] = useState<DiscoveredWorkflow[]>([]);
   const [templates, setTemplates] = useState<AutomationTemplate[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
+  const [instances, setInstances] = useState<N8nInstance[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
 
   // Mapping modal
   const [selectedDiscovered, setSelectedDiscovered] = useState<DiscoveredWorkflow[] | null>(null);
   const [mapTarget, setMapTarget] = useState<DiscoveredWorkflow | null>(null);
+  const [deployTarget, setDeployTarget] = useState<AutomationTemplate | null>(null);
 
-  const loadData = () => {
-    setLoading(true);
-    Promise.all([
+  const loadData = (silent = false) => {
+    if (!silent) setLoading(true);
+    return Promise.all([
       fetch("/api/admin/data/workflows", { credentials: "include" }).then((r) => r.json()),
       fetch("/api/admin/data/discovered_workflows", { credentials: "include" }).then((r) => r.json()),
       fetch("/api/admin/data/automation_templates", { credentials: "include" }).then((r) => r.json()),
       fetch("/api/admin/data/clients", { credentials: "include" }).then((r) => r.json()),
+      fetch("/api/admin/data/n8n_instances", { credentials: "include" }).then((r) => r.json()),
     ])
-      .then(([wfRes, discRes, tmplRes, cliRes]) => {
+      .then(([wfRes, discRes, tmplRes, cliRes, instRes]) => {
         if (wfRes.ok) setWorkflows(wfRes.rows || []);
         if (discRes.ok) setDiscovered(discRes.rows || []);
         if (tmplRes.ok) setTemplates(tmplRes.rows || []);
         if (cliRes.ok) setClients(cliRes.rows || []);
+        if (instRes.ok) setInstances(instRes.rows || []);
       })
       .catch(() => toast.error("Failed to load automations."))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   };
 
   useEffect(() => {
     loadData();
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadData(true);
+    };
+    const interval = window.setInterval(refresh, 20_000);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, []);
+
+  const synchronizeN8n = async () => {
+    setSyncing(true);
+    try {
+      const response = await fetch("/api/admin/n8n/sync", { method: "POST", credentials: "include" });
+      const result = await response.json();
+      const failures = Array.isArray(result.results) ? result.results.filter((item: { ok?: boolean }) => !item.ok).length : 0;
+      if (!response.ok || !result.ok) throw new Error(failures ? `${failures} n8n instance(s) failed to sync.` : result.error || "n8n sync failed.");
+      toast.success(`Live n8n telemetry synchronized for ${result.results?.length || 0} instance(s).`);
+      await loadData(true);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to synchronize n8n.");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const clientMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -72,9 +103,7 @@ export function AutomationsView() {
       const data = await res.json();
       if (data.ok) {
         toast.success(`Automation state updated to ${nextState}`);
-        setWorkflows((prev) =>
-          prev.map((item) => (item.id === wf.id ? { ...item, desired_state: nextState, actual_state: nextState } : item))
-        );
+        setWorkflows((prev) => prev.map((item) => (item.id === wf.id ? { ...item, desired_state: nextState, sync_status: "pending" } : item)));
       } else {
         toast.error(data.error || "Failed to update state.");
       }
@@ -86,8 +115,8 @@ export function AutomationsView() {
   const filteredWorkflows = useMemo(() => {
     return workflows.filter(
       (w) =>
-        w.business_name.toLowerCase().includes(search.toLowerCase()) ||
-        w.business_job.toLowerCase().includes(search.toLowerCase()) ||
+        (w.business_name || w.workflow_name).toLowerCase().includes(search.toLowerCase()) ||
+        (w.business_job || "").toLowerCase().includes(search.toLowerCase()) ||
         (clientMap.get(w.client_id) || "").toLowerCase().includes(search.toLowerCase())
     );
   }, [workflows, search, clientMap]);
@@ -104,6 +133,10 @@ export function AutomationsView() {
           <p>Desired-state control engine, n8n cluster telemetry, and reusable multi-tenant templates.</p>
         </div>
         <div style={{ display: "flex", gap: "10px" }}>
+          <span className="badge badge-blue" style={{ alignSelf: "center" }}><span className="signal" /> LIVE · 20S</span>
+          <button className="soft-button" onClick={synchronizeN8n} disabled={syncing}>
+            <Radio size={15} /> {syncing ? "Syncing n8n..." : "Sync n8n Now"}
+          </button>
           <button className="soft-button" onClick={() => loadData()}>
             <RefreshCw size={15} /> Refresh Telemetry
           </button>
@@ -168,9 +201,9 @@ export function AutomationsView() {
                     {filteredWorkflows.map((wf) => (
                       <tr key={wf.id}>
                         <td>
-                          <strong>{wf.business_name}</strong>
+                          <strong>{wf.business_name || wf.workflow_name}</strong>
                           <small style={{ display: "block", color: "var(--muted)" }}>
-                            {wf.business_job} • ID: {wf.n8n_workflow_id}
+                            {wf.business_job || "Business automation"} • ID: {wf.n8n_workflow_id}
                           </small>
                         </td>
                         <td>{clientMap.get(wf.client_id) || wf.client_id}</td>
@@ -178,10 +211,10 @@ export function AutomationsView() {
                         <td>
                           <span
                             className={`badge badge-${
-                              wf.sync_status === "synchronized" ? "green" : "amber"
+                              wf.sync_status === "success" ? "green" : wf.sync_status === "error" ? "red" : "amber"
                             }`}
                           >
-                            {wf.sync_status}
+                            {wf.sync_status || "idle"}
                           </span>
                         </td>
                         <td>
@@ -245,12 +278,12 @@ export function AutomationsView() {
                     {discovered.map((disc) => (
                       <tr key={disc.id}>
                         <td>
-                          <strong>{disc.name_in_n8n}</strong>
+                          <strong>{disc.name_in_n8n || disc.discovered_name || disc.n8n_workflow_id}</strong>
                         </td>
                         <td style={{ fontFamily: "monospace", fontSize: "10px" }}>{disc.n8n_instance_id}</td>
                         <td style={{ fontFamily: "monospace", fontSize: "10px" }}>{disc.n8n_workflow_id}</td>
                         <td style={{ fontFamily: "monospace", fontSize: "10px", color: "var(--muted)" }}>
-                          {disc.discovered_at.slice(0, 10)}
+                          {(disc.discovered_at || disc.first_seen_at).slice(0, 10)}
                         </td>
                         <td>
                           <span
@@ -288,8 +321,8 @@ export function AutomationsView() {
                 {templates.map((tmpl) => (
                   <div key={tmpl.id} className="panel neumorph" style={{ padding: "18px" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <span className="eyebrow">{tmpl.category}</span>
-                      <span className="badge badge-blue">v{tmpl.version}</span>
+                      <span className="eyebrow">{tmpl.category || "Automation"}</span>
+                      <span className="badge badge-blue">v{tmpl.version || "1.0"}</span>
                     </div>
                     <h3 style={{ margin: "8px 0 6px", fontSize: "15px" }}>{tmpl.name}</h3>
                     <p style={{ fontSize: "12px", color: "var(--muted)", margin: "0 0 14px", lineHeight: 1.5 }}>
@@ -297,11 +330,11 @@ export function AutomationsView() {
                     </p>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--line)", paddingTop: "12px" }}>
                       <small style={{ color: "var(--muted)", font: "10px 'DM Mono', monospace" }}>
-                        Industry: {tmpl.target_industry}
+                        Industry: {tmpl.target_industry || "All industries"}
                       </small>
                       <button
                         className="action-pill"
-                        onClick={() => toast.success(`Template ${tmpl.name} ready for client onboarding.`)}
+                        onClick={() => setDeployTarget(tmpl)}
                       >
                         Deploy Template
                       </button>
@@ -326,8 +359,30 @@ export function AutomationsView() {
           }}
         />
       )}
+      {deployTarget && <DeployTemplateModal template={deployTarget} clients={clients} instances={instances} onClose={() => setDeployTarget(null)} onSuccess={() => { setDeployTarget(null); void loadData(); }} />}
     </div>
   );
+}
+
+function DeployTemplateModal({ template, clients, instances, onClose, onSuccess }: { template: AutomationTemplate; clients: Client[]; instances: N8nInstance[]; onClose: () => void; onSuccess: () => void }) {
+  const [clientId, setClientId] = useState(clients[0]?.id || "");
+  const [instanceId, setInstanceId] = useState(instances[0]?.id || "");
+  const [busy, setBusy] = useState(false);
+  const deployable = !!template.default_config?.workflow_definition;
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const response = await fetch(`/api/admin/automation-templates/${template.id}/deploy`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_id: clientId, n8n_instance_id: instanceId }) });
+      const result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.error || "Deployment failed.");
+      toast.success("Workflow deployed and explicitly assigned. Activation remains controlled separately.");
+      onSuccess();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Deployment failed.");
+    } finally { setBusy(false); }
+  };
+  return <div className="modal-backdrop" onMouseDown={onClose}><div className="onboarding-modal panel neumorph" onMouseDown={(event) => event.stopPropagation()} style={{ maxWidth: "520px" }}><div className="modal-head"><div><div className="eyebrow">EXPLICIT TEMPLATE DEPLOYMENT</div><h2>{template.name}</h2><p>Creates a real inactive n8n workflow, records discovery, then assigns it to the selected tenant.</p></div><button className="close-button" onClick={onClose}><X size={18} /></button></div>{!deployable ? <div className="panel neumorph error-state">This catalog entry has no workflow definition. Add a reviewed <code>workflow_definition</code> to its existing template configuration before deployment.</div> : <form onSubmit={submit}><div className="form-group"><label>Client</label><select value={clientId} onChange={(event) => setClientId(event.target.value)} required>{clients.map((client) => <option key={client.id} value={client.id}>{client.company_name}</option>)}</select></div><div className="form-group"><label>Connected n8n instance</label><select value={instanceId} onChange={(event) => setInstanceId(event.target.value)} required>{instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.instance_name}</option>)}</select></div><div className="modal-actions"><button type="button" className="secondary-cta" onClick={onClose}>Cancel</button><button className="primary-cta" disabled={busy || !clientId || !instanceId}>{busy ? "Deploying…" : "Deploy inactive workflow"}</button></div></form>}</div></div>;
 }
 
 function MapWorkflowModal({
@@ -342,7 +397,7 @@ function MapWorkflowModal({
   onSuccess: () => void;
 }) {
   const [clientId, setClientId] = useState<string>(clients[0]?.id || "");
-  const [businessName, setBusinessName] = useState<string>(discovered.name_in_n8n);
+  const [businessName, setBusinessName] = useState<string>(discovered.name_in_n8n || discovered.discovered_name || discovered.n8n_workflow_id);
   const [businessJob, setBusinessJob] = useState<string>("Automated lead nurturing and review collection");
   const [busy, setBusy] = useState(false);
 
@@ -394,7 +449,7 @@ function MapWorkflowModal({
         <form onSubmit={handleSubmit}>
           <div className="panel neumorph" style={{ padding: "12px", marginBottom: "14px" }}>
             <small className="muted">Raw n8n Workflow Name</small>
-            <p style={{ margin: "2px 0 0", fontFamily: "monospace", fontSize: "12px" }}>{discovered.name_in_n8n}</p>
+            <p style={{ margin: "2px 0 0", fontFamily: "monospace", fontSize: "12px" }}>{discovered.name_in_n8n || discovered.discovered_name || discovered.n8n_workflow_id}</p>
           </div>
 
           <div className="form-group">

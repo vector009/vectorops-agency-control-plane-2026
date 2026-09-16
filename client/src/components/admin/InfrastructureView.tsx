@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { N8nInstance, ProviderBalance, CredentialMeta } from "@/types/vectorops";
+import { apiFetch as fetch } from "@/lib/api";
 
 export function InfrastructureView() {
   const [tab, setTab] = useState<"instances" | "providers" | "credentials">("instances");
@@ -55,7 +56,8 @@ export function InfrastructureView() {
       });
       const data = await res.json();
       if (data.ok) {
-        toast.success(`Heartbeat verified! Response latency: ${data.latency_ms}ms`);
+        const discovered = data.result?.workflowsDiscovered;
+        toast.success(discovered === undefined ? "n8n connection verified." : `n8n verified · ${discovered} workflow(s) discovered.`);
         loadData();
       } else {
         toast.error(data.error || "Instance verification failed.");
@@ -137,7 +139,7 @@ export function InfrastructureView() {
                     </span>
                   </td>
                   <td style={{ fontFamily: "monospace", fontSize: "11px" }}>{inst.base_url}</td>
-                  <td>{inst.workflow_count} active</td>
+                  <td>{inst.workflow_count ?? 0} active</td>
                   <td>
                     <span className={`badge badge-${inst.status === "active" ? "green" : "red"}`}>
                       {inst.status}
@@ -168,30 +170,34 @@ export function InfrastructureView() {
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginBottom: "20px" }}>
             {providers.map((prov) => {
-              const isLow = prov.current_balance <= prov.alert_threshold;
+              const balance = prov.current_balance ?? prov.balance;
+              const threshold = prov.alert_threshold ?? prov.threshold;
+              const providerName = prov.provider || prov.provider_name;
+              const checkedAt = prov.last_checked_at || prov.checked_at;
+              const isLow = balance <= threshold;
               return (
                 <div
-                  key={prov.provider}
+                  key={prov.id}
                   className={`panel neumorph ${isLow ? "amber" : ""}`}
                   style={{ padding: "20px", border: isLow ? "1px solid var(--amber)" : "1px solid var(--line)" }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                    <span className="eyebrow">{prov.category}</span>
+                    <span className="eyebrow">{prov.category || prov.account_name || "Provider account"}</span>
                     <span className={`badge badge-${isLow ? "amber" : "green"}`}>
                       {isLow ? "LOW BALANCE" : "HEALTHY"}
                     </span>
                   </div>
-                  <h3 style={{ margin: "10px 0 4px", fontSize: "18px" }}>{prov.provider}</h3>
+                  <h3 style={{ margin: "10px 0 4px", fontSize: "18px" }}>{providerName}</h3>
                   <div style={{ display: "flex", alignItems: "baseline", gap: "8px", margin: "12px 0 6px" }}>
                     <strong style={{ fontSize: "28px", color: isLow ? "var(--amber)" : "inherit" }}>
-                      {currency.format(prov.current_balance)}
+                      {new Intl.NumberFormat("en-US", { style: "currency", currency: prov.currency }).format(balance)}
                     </strong>
                     <small style={{ color: "var(--muted)", font: "10px 'DM Mono', monospace" }}>
-                      Alert threshold: {currency.format(prov.alert_threshold)}
+                      Alert threshold: {new Intl.NumberFormat("en-US", { style: "currency", currency: prov.currency }).format(threshold)}
                     </small>
                   </div>
                   <small style={{ color: "var(--muted)", display: "block", font: "9px 'DM Mono', monospace" }}>
-                    Last synchronized: {prov.last_checked_at.slice(0, 19).replace("T", " ")}
+                    Last synchronized: {checkedAt.slice(0, 19).replace("T", " ")}
                   </small>
                 </div>
               );
@@ -221,21 +227,21 @@ export function InfrastructureView() {
               {credentials.map((cred) => (
                 <tr key={cred.id}>
                   <td>
-                    <strong>{cred.service_name}</strong>
+                    <strong>{cred.service_name || cred.credential_name}</strong>
                   </td>
                   <td style={{ fontFamily: "monospace", fontSize: "11px", color: "var(--blue)" }}>
                     {cred.vault_secret_ref}
                   </td>
                   <td>
-                    <span className={`badge badge-${cred.status === "active" ? "green" : "amber"}`}>
-                      {cred.status}
+                    <span className={`badge badge-${cred.active && cred.status !== "expired" ? "green" : "amber"}`}>
+                      {cred.status || (cred.active ? "active" : "inactive")}
                     </span>
                   </td>
                   <td style={{ fontFamily: "monospace", fontSize: "10px", color: "var(--muted)" }}>
                     {cred.expires_at || "Never expires"}
                   </td>
                   <td style={{ fontFamily: "monospace", fontSize: "10px", color: "var(--muted)" }}>
-                    {cred.last_used_at.slice(0, 19).replace("T", " ")}
+                    {cred.last_used_at ? cred.last_used_at.slice(0, 19).replace("T", " ") : "Not recorded"}
                   </td>
                 </tr>
               ))}

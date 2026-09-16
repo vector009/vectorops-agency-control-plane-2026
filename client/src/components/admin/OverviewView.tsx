@@ -15,6 +15,7 @@ import {
   Plus,
 } from "lucide-react";
 import type { AttentionItem, Client } from "@/types/vectorops";
+import { apiFetch as fetch } from "@/lib/api";
 
 interface OverviewProps {
   onNavigate: (module: string) => void;
@@ -31,6 +32,8 @@ export function OverviewView({ onNavigate, onAddClient, onOpenClient }: Overview
     mrr: number;
     overdue: number;
     collected: number;
+    financialByCurrency: Record<string, { mrr: number; outstanding: number; collected: number }>;
+    healthPercent: number;
     openTickets: number;
     loading: boolean;
     attentionItems: AttentionItem[];
@@ -42,12 +45,21 @@ export function OverviewView({ onNavigate, onAddClient, onOpenClient }: Overview
     mrr: 0,
     overdue: 0,
     collected: 0,
+    financialByCurrency: {},
+    healthPercent: 100,
     openTickets: 0,
     loading: true,
     attentionItems: [],
   });
 
-  const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  const formatPortfolio = (metric: "mrr" | "outstanding" | "collected", fallback: number) => {
+    const totals = Object.entries(data.financialByCurrency).filter(([, values]) => values[metric] !== 0);
+    if (totals.length === 0) return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(fallback);
+    return totals
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([currency, values]) => new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(values[metric]))
+      .join(" · ");
+  };
 
   const loadData = () => {
     fetch("/api/admin/overview", { credentials: "include" })
@@ -62,6 +74,8 @@ export function OverviewView({ onNavigate, onAddClient, onOpenClient }: Overview
             mrr: body.mrr || 0,
             overdue: body.overdue || 0,
             collected: body.collected || 0,
+            financialByCurrency: body.financialByCurrency || {},
+            healthPercent: Number.isFinite(body.healthPercent) ? body.healthPercent : 100,
             openTickets: body.openTickets || 0,
             loading: false,
             attentionItems: body.attentionItems || [],
@@ -104,7 +118,7 @@ export function OverviewView({ onNavigate, onAddClient, onOpenClient }: Overview
             <span>MONTHLY RECURRING REVENUE</span>
             <CircleDollarSign size={18} />
           </div>
-          <strong>{data.loading ? "..." : currency.format(data.mrr)}</strong>
+          <strong className="portfolio-money">{data.loading ? "..." : formatPortfolio("mrr", data.mrr)}</strong>
           <small>{activeClients.length} active subscription retainers</small>
         </div>
 
@@ -113,7 +127,7 @@ export function OverviewView({ onNavigate, onAddClient, onOpenClient }: Overview
             <span>COLLECTED REVENUE</span>
             <TrendingUp size={18} style={{ color: "var(--green)" }} />
           </div>
-          <strong>{data.loading ? "..." : currency.format(data.collected)}</strong>
+          <strong className="portfolio-money">{data.loading ? "..." : formatPortfolio("collected", data.collected)}</strong>
           <small>Verified payments received</small>
         </div>
 
@@ -122,7 +136,7 @@ export function OverviewView({ onNavigate, onAddClient, onOpenClient }: Overview
             <span>OUTSTANDING REVENUE</span>
             <AlertTriangle size={18} style={{ color: data.overdue > 0 ? "var(--amber)" : "var(--muted)" }} />
           </div>
-          <strong>{data.loading ? "..." : currency.format(data.overdue)}</strong>
+          <strong className="portfolio-money">{data.loading ? "..." : formatPortfolio("outstanding", data.overdue)}</strong>
           <small>Due and pending partial balances</small>
         </div>
 
@@ -167,8 +181,8 @@ export function OverviewView({ onNavigate, onAddClient, onOpenClient }: Overview
             <span>EXECUTION HEALTH</span>
             <CheckCircle2 size={18} style={{ color: "var(--green)" }} />
           </div>
-          <strong>99.8%</strong>
-          <small>Synchronized across all nodes</small>
+          <strong>{data.loading ? "..." : `${data.healthPercent}%`}</strong>
+          <small>Workflows with synchronized actual state</small>
         </div>
       </div>
 
@@ -256,17 +270,10 @@ export function OverviewView({ onNavigate, onAddClient, onOpenClient }: Overview
               Money & Invoices <ArrowUpRight size={14} />
             </button>
           </div>
-          <div className="trend-placeholder">
-            <div className="trend-bars">
-              <i style={{ height: "45%" }} />
-              <i style={{ height: "55%" }} />
-              <i style={{ height: "60%" }} />
-              <i style={{ height: "70%" }} />
-              <i style={{ height: "80%" }} />
-              <i style={{ height: "92%" }} />
-              <i style={{ height: "100%" }} />
-            </div>
-            <small>Consolidated billing, partial collections, and active retainer schedules.</small>
+          <div className="metric-card-group" style={{ marginBottom: 0 }}>
+            <div className="metric-box"><span>MRR</span><strong>{formatPortfolio("mrr", data.mrr)}</strong></div>
+            <div className="metric-box"><span>Collected</span><strong>{formatPortfolio("collected", data.collected)}</strong></div>
+            <div className="metric-box"><span>Outstanding</span><strong>{formatPortfolio("outstanding", data.overdue)}</strong></div>
           </div>
         </div>
 
@@ -286,10 +293,10 @@ export function OverviewView({ onNavigate, onAddClient, onOpenClient }: Overview
             </div>
             <div>
               <strong>{data.workflows} automations monitored across {data.instances} n8n nodes</strong>
-              <small>Zero state drift detected between desired and actual execution planes.</small>
+              <small>{data.healthPercent === 100 ? "No state drift detected between desired and actual execution planes." : "One or more workflows are pending synchronization or need review."}</small>
             </div>
-            <span className="badge badge-green">
-              <ShieldCheck size={12} /> SECURE
+            <span className={`badge badge-${data.healthPercent === 100 ? "green" : "amber"}`}>
+              <ShieldCheck size={12} /> {data.healthPercent === 100 ? "IN SYNC" : "REVIEW"}
             </span>
           </div>
         </div>
