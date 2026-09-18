@@ -249,6 +249,13 @@ export interface AutomationTemplateRecord {
   active: boolean;
 }
 
+function resolveAuthPassword(envVal: string | undefined, defaultVal: string) {
+  if (!envVal || envVal === "replace-for-local-development" || envVal.includes("replace")) {
+    return defaultVal;
+  }
+  return envVal;
+}
+
 // Initial In-Memory Database Seed
 class VectorOpsStore {
   clients: ClientRecord[] = [
@@ -349,7 +356,7 @@ class VectorOpsStore {
       {
         id: "usr-admin-01",
         email: "admin@vectorops.ai",
-        password: process.env.ADMIN_AUTH_PASSWORD || "admin2026",
+        password: resolveAuthPassword(process.env.ADMIN_AUTH_PASSWORD, "admin2026"),
         role: "admin",
         client_id: null,
         full_name: "VectorOps Admin",
@@ -360,7 +367,7 @@ class VectorOpsStore {
       {
         id: "usr-admin-02",
         email: "vectorops2@gmail.com",
-        password: process.env.ADMIN_AUTH_PASSWORD || "admin2026",
+        password: resolveAuthPassword(process.env.ADMIN_AUTH_PASSWORD, "admin2026"),
         role: "admin",
         client_id: null,
         full_name: "VectorOps Admin",
@@ -371,7 +378,7 @@ class VectorOpsStore {
       {
         id: "usr-sarah-dental",
         email: "sarah@apexdental.com",
-        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
+        password: resolveAuthPassword(process.env.CLIENT_AUTH_PASSWORD, "client2026!"),
         role: "client",
         client_id: "cli-acme-dental",
         full_name: "Dr. Sarah Jenkins",
@@ -382,7 +389,7 @@ class VectorOpsStore {
       {
         id: "usr-sarah-dental",
         email: "sarah@acmedental.com",
-        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
+        password: resolveAuthPassword(process.env.CLIENT_AUTH_PASSWORD, "client2026!"),
         role: "client",
         client_id: "cli-acme-dental",
         full_name: "Dr. Sarah Jenkins",
@@ -393,7 +400,7 @@ class VectorOpsStore {
       {
         id: "usr-marcus-fitness",
         email: "mark@elitefitness.com",
-        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
+        password: resolveAuthPassword(process.env.CLIENT_AUTH_PASSWORD, "client2026!"),
         role: "client",
         client_id: "cli-elite-fitness",
         full_name: "Mark Reynolds",
@@ -404,7 +411,7 @@ class VectorOpsStore {
       {
         id: "usr-marcus-fitness",
         email: "marcus@elitefitness.com",
-        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
+        password: resolveAuthPassword(process.env.CLIENT_AUTH_PASSWORD, "client2026!"),
         role: "client",
         client_id: "cli-elite-fitness",
         full_name: "Marcus Vance",
@@ -415,7 +422,7 @@ class VectorOpsStore {
       {
         id: "usr-david-realty",
         email: "david@apexrealty.com",
-        password: process.env.CLIENT_AUTH_PASSWORD || "client2026!",
+        password: resolveAuthPassword(process.env.CLIENT_AUTH_PASSWORD, "client2026!"),
         role: "client",
         client_id: "cli-apex-realty",
         full_name: "David Sterling",

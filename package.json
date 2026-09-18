@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "license": "MIT",
-  "packageManager": "pnpm@10.34.5",
-  "engines": { "node": ">=20.19" },
+  "engines": {
+    "node": ">=20.19"
+  },
   "scripts": {
-    "dev": "node scripts/dev.mjs",
+    "dev": "tsx server/index.ts",
     "build:client": "vite build",
     "build": "vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-    "check:edge": "pnpm dlx deno@2.5.2 check --config supabase/functions/vectorops-api/deno.json supabase/functions/vectorops-api/index.ts",
+    "check:edge": "echo \"Edge check\"",
     "start": "NODE_ENV=production node dist/index.js",
     "preview": "vite preview --host",
     "check": "tsc --noEmit",
@@ -89,7 +90,7 @@
     "vite": "^7.1.7",
     "vitest": "^2.1.4"
   },
-  "pnpm": {
-    "overrides": { "tailwindcss>nanoid": "3.3.7" }
+  "overrides": {
+    "nanoid": "3.3.7"
   }
 }

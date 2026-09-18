@@ -6,8 +6,19 @@ const supabasePublishableKey = (
   || import.meta.env.VITE_SUPABASE_ANON_KEY
 ) as string | undefined;
 
-export const edgeApiUrl = String(import.meta.env.VITE_VECTOROPS_API_URL || "").replace(/\/+$/, "");
-export const supabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey);
+const isPlaceholder = (val?: string) =>
+  !val ||
+  val.includes("your-project") ||
+  val.includes("placeholder") ||
+  val.includes("your-key") ||
+  val.includes("example.com");
+
+export const edgeApiUrl = isPlaceholder(import.meta.env.VITE_VECTOROPS_API_URL)
+  ? ""
+  : String(import.meta.env.VITE_VECTOROPS_API_URL || "").replace(/\/+$/, "");
+
+export const supabaseConfigured =
+  !isPlaceholder(supabaseUrl) && !isPlaceholder(supabasePublishableKey);
 
 export const supabase = supabaseConfigured
   ? createClient(supabaseUrl!, supabasePublishableKey!, {
