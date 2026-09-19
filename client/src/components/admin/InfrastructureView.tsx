@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect } from "react";
 import {
   Network,
   Server,
@@ -24,9 +24,6 @@ export function InfrastructureView() {
   const [credentials, setCredentials] = useState<CredentialMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
-  const [selectedInstanceId, setSelectedInstanceId] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [savingKey, setSavingKey] = useState(false);
 
   const currency = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
 
@@ -50,10 +47,6 @@ export function InfrastructureView() {
     loadData();
   }, []);
 
-  useEffect(() => {
-    if (!selectedInstanceId && instances[0]) setSelectedInstanceId(instances[0].id);
-  }, [instances, selectedInstanceId]);
-
   const verifyInstance = async (id: string) => {
     setVerifyingId(id);
     try {
@@ -73,30 +66,6 @@ export function InfrastructureView() {
       toast.error("Network verification error.");
     } finally {
       setVerifyingId(null);
-    }
-  };
-
-  const saveApiKey = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!selectedInstanceId || !apiKey.trim()) return;
-    setSavingKey(true);
-    try {
-      const res = await fetch(`/api/admin/n8n-instances/${selectedInstanceId}/credentials`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ api_key: apiKey }),
-      });
-      const data = await res.json();
-      setApiKey("");
-      if (!res.ok || !data.ok) throw new Error(data.error || "n8n verification failed.");
-      const discovered = data.result?.workflowsDiscovered;
-      toast.success(discovered === undefined ? "n8n connected and verified." : `n8n connected · ${discovered} workflow(s) discovered.`);
-      loadData();
-    } catch (error) {
-      setApiKey("");
-      toast.error(error instanceof Error ? error.message : "Unable to connect n8n.");
-    } finally {
-      setSavingKey(false);
     }
   };
 
@@ -142,32 +111,7 @@ export function InfrastructureView() {
 
       {/* Tab 1: Instances */}
       {tab === "instances" && (
-        <div>
-          <form className="panel neumorph" onSubmit={saveApiKey} style={{ padding: "18px", marginBottom: "16px" }}>
-            <div className="eyebrow"><KeyRound size={13} /> CONNECT N8N SECURELY</div>
-            <h3 style={{ margin: "6px 0 4px" }}>Enter an n8n API key</h3>
-            <p className="muted" style={{ margin: "0 0 14px", maxWidth: "720px" }}>
-              The key is sent over HTTPS to the protected Edge API, stored in Supabase Vault, and immediately verified against the selected n8n instance. It is never returned to this browser or saved in Cloudflare.
-            </p>
-            {instances.length === 0 ? (
-              <div className="empty-state">Create an n8n instance record during client infrastructure setup before adding its API key.</div>
-            ) : (
-              <div className="form-row-2">
-                <label className="form-group">
-                  <span>n8n instance</span>
-                  <select value={selectedInstanceId} onChange={(event) => setSelectedInstanceId(event.target.value)} required>
-                    {instances.map((instance) => <option key={instance.id} value={instance.id}>{instance.instance_name} — {instance.base_url}</option>)}
-                  </select>
-                </label>
-                <label className="form-group">
-                  <span>n8n API key</span>
-                  <input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="Paste the n8n API key" autoComplete="off" required />
-                </label>
-              </div>
-            )}
-            {instances.length > 0 && <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "12px" }}><button className="primary-cta" type="submit" disabled={savingKey || !apiKey.trim()}>{savingKey ? "Verifying and syncing…" : "Connect and sync n8n"}</button></div>}
-          </form>
-          <div className="panel neumorph">
+        <div className="panel neumorph">
           <table className="interactive-table">
             <thead>
               <tr>
@@ -218,7 +162,6 @@ export function InfrastructureView() {
               ))}
             </tbody>
           </table>
-          </div>
         </div>
       )}
 
