@@ -329,6 +329,18 @@ async function adminMutation(request: Request, path: string[], payload: Json): P
     const result = await controlPlane.run(path[1]); const item = result.results[0];
     return item?.ok ? ok({ status: "verified", result: item }) : fail(502, item?.error || "n8n synchronization failed.");
   }
+  if (path[0] === "n8n-instances" && path[2] === "credentials" && request.method === "POST") {
+    const apiKey = text(payload.api_key, 500);
+    const stored = await service.rpc("set_n8n_api_secret", { p_instance_id: path[1], p_api_secret: apiKey });
+    if (stored.error) throw stored.error;
+
+    // Do not report success until the supplied key has been used against the
+    // real n8n instance and the resulting state has been persisted.
+    const result = await controlPlane.run(path[1]);
+    const item = result.results[0];
+    if (!item?.ok) return fail(502, item?.error || "The API key was stored, but n8n verification failed.");
+    return ok({ status: "verified", result: item });
+  }
   if (path[0] === "n8n" && path[1] === "sync") {
     const result = await controlPlane.run();
     return { status: result.ok ? 200 : 502, body: result as unknown as Json };

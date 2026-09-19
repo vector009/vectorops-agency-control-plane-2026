@@ -52,11 +52,12 @@ Admin pages use server-authorized access across tenants. Client pages use the si
 
 The Edge API includes the same control-plane operations. A Supabase Cron HTTP job invokes reconciliation; no Render/Railway Node machine is required. Client-owned n8n servers still execute the workflows.
 
-1. Apply `supabase/migrations/20260915010000_n8n_control_plane.sql` after the existing migration.
-2. In Supabase SQL Editor, store each n8n API key with `select vault.create_secret('YOUR_N8N_API_KEY', 'n8n-instance-name');`. Copy only the returned secret UUID into that instance's `n8n_api_secret_ref`; never put the key itself in a public table or browser variable.
-3. Give the n8n API key only the workflow read/list/activate and execution read/list permissions needed by this service. Use an HTTPS `base_url`.
-4. Configure the Supabase Cron call described in `docs/SUPABASE_EDGE_DEPLOYMENT.md`. The admin **Sync n8n Now** action is also available for an immediate pull.
-5. For instant business outcomes, configure an n8n HTTP Request node to POST to the Edge event route with `X-VectorOps-Ingest-Secret`. Store that separate value in n8n Credentials, not inside a workflow export.
+1. Apply `supabase/migrations/20260915010000_n8n_control_plane.sql` and then `supabase/migrations/20260919000000_n8n_secret_setup.sql` after the existing migration.
+2. Create the n8n instance record with its HTTPS `base_url` through the existing infrastructure/onboarding flow.
+3. In the VectorOps admin console open **Infrastructure**, select the instance, paste its n8n API key, and choose **Connect and sync n8n**. The key is sent to the trusted Edge API, stored in Supabase Vault, and discarded from the browser after submission. The UI reports success only after the real n8n API has responded and workflow telemetry has been persisted.
+4. Give the n8n API key only the workflow read/list/activate and execution read/list permissions needed by this service. Never put it in a public table, GitHub, Cloudflare variable, or browser variable.
+5. Configure the Supabase Cron call described in `docs/SUPABASE_EDGE_DEPLOYMENT.md`. The admin **Sync n8n Now** action is also available for an immediate pull.
+6. For instant business outcomes, configure an n8n HTTP Request node to POST to the Edge event route with `X-VectorOps-Ingest-Secret`. Store that separate value in n8n Credentials, not inside a workflow export.
 
 Example business event body:
 
