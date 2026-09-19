@@ -13,15 +13,18 @@ const isPlaceholder = (val?: string) =>
   val.includes("your-key") ||
   val.includes("example.com");
 
+const cleanSupabaseUrl = supabaseUrl?.trim().replace(/\/+$/, "");
+const cleanPublishableKey = supabasePublishableKey?.trim();
+
 export const edgeApiUrl = isPlaceholder(import.meta.env.VITE_VECTOROPS_API_URL)
   ? ""
-  : String(import.meta.env.VITE_VECTOROPS_API_URL || "").replace(/\/+$/, "");
+  : String(import.meta.env.VITE_VECTOROPS_API_URL || "").trim().replace(/\/+$/, "");
 
 export const supabaseConfigured =
-  !isPlaceholder(supabaseUrl) && !isPlaceholder(supabasePublishableKey);
+  !isPlaceholder(cleanSupabaseUrl) && !isPlaceholder(cleanPublishableKey);
 
 export const supabase = supabaseConfigured
-  ? createClient(supabaseUrl!, supabasePublishableKey!, {
+  ? createClient(cleanSupabaseUrl!, cleanPublishableKey!, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,

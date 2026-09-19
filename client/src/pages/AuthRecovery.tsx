@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft, CheckCircle2, KeyRound, ShieldCheck } from "lucide-react";
-import { edgeApiUrl, requireSupabase } from "@/lib/supabase";
+import { edgeApiUrl, requireSupabase, supabaseConfigured } from "@/lib/supabase";
 import { apiFetch as fetch } from "@/lib/api";
 
 function recoveryMode() {
@@ -22,7 +22,7 @@ export function PasswordRecoveryRequest() {
     setError("");
     setSuccess("");
     try {
-      if (edgeApiUrl) {
+      if (supabaseConfigured || edgeApiUrl) {
         const redirectTo = `${window.location.origin}/auth/reset?mode=${mode}`;
         const result = await requireSupabase().auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo });
         if (result.error) throw new Error("Unable to send a recovery email right now. Please wait and try again.");
@@ -92,7 +92,7 @@ export function PasswordReset() {
   const [complete, setComplete] = useState(false);
 
   useEffect(() => {
-    if (!edgeApiUrl || !validLink) return;
+    if ((!edgeApiUrl && !supabaseConfigured) || !validLink) return;
     let active = true;
     const establishRecoverySession = async () => {
       try {
@@ -119,7 +119,7 @@ export function PasswordReset() {
     }
     setBusy(true);
     try {
-      if (edgeApiUrl) {
+      if (supabaseConfigured || edgeApiUrl) {
         if (!sessionReady) throw new Error("This recovery link is invalid or expired. Request a new one.");
         const auth = requireSupabase().auth;
         const result = await auth.updateUser({ password });

@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import type { BillingAdjustment, BusinessEvent, Client, ClientPortalConfig, ClientProfile, ClientReport, Invoice, Payment, Subscription, Workflow, WorkflowRun, SupportTicket, Task } from "@/types/vectorops";
-import { edgeApiUrl } from "@/lib/supabase";
+import { edgeApiUrl, supabaseConfigured } from "@/lib/supabase";
 import { apiFetch as fetch, signInForRole, signOut } from "@/lib/api";
 
 export function ClientPortal() {
@@ -145,7 +145,7 @@ export function ClientPortal() {
     e.preventDefault();
     setAuthError("");
     try {
-      if (edgeApiUrl) {
+      if (supabaseConfigured || edgeApiUrl) {
         const user = await signInForRole(email, password, "client");
         if (user?.slug !== slug) {
           await signOut();
@@ -169,8 +169,8 @@ export function ClientPortal() {
       } else {
         setAuthError(data.error || "Invalid email or password.");
       }
-    } catch {
-      setAuthError("Network error during login.");
+    } catch (err: unknown) {
+      setAuthError(err instanceof Error ? err.message : "Network error during login.");
     }
   };
 

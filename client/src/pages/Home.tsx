@@ -42,8 +42,8 @@ import { SettingsView } from "@/components/admin/SettingsView";
 import { ActivityView } from "@/components/admin/ActivityView";
 import { AuditView } from "@/components/admin/AuditView";
 import { OnboardingWizard } from "@/components/admin/OnboardingWizard";
-import { edgeApiUrl } from "@/lib/supabase";
-import { apiFetch as fetch, signInForRole, signOut } from "@/lib/api";
+import { edgeApiUrl, supabaseConfigured } from "@/lib/supabase";
+import { apiFetch as fetch, getCurrentUser, signInForRole, signOut } from "@/lib/api";
 
 const nav = [
   ["Overview", LayoutDashboard],
@@ -199,7 +199,7 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
     e.preventDefault();
     setBusy(true);
     try {
-      if (edgeApiUrl) {
+      if (supabaseConfigured || edgeApiUrl) {
         const user = await signInForRole(email, password, mode);
         toast.success(mode === "admin" ? "Admin authentication confirmed." : "Client authentication confirmed.");
         onClose();
@@ -220,8 +220,9 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
       toast.success(mode === "admin" ? "Admin authentication confirmed." : "Client authentication confirmed.");
       onClose();
       navigate(mode === "admin" ? "/admin" : `/portal/${result.slug}`);
-    } catch {
-      toast.error("Authentication service unavailable.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Authentication service unavailable.";
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -304,11 +305,10 @@ export function CommandCenter({ onLogout }: { onLogout: () => void }) {
 
   useEffect(() => {
     let mounted = true;
-    fetch("/api/auth/me", { credentials: "include" })
-      .then(async (response) => ({ ok: response.ok, body: await response.json() }))
-      .then((result) => {
+    getCurrentUser()
+      .then((user) => {
         if (!mounted) return;
-        if (result.ok && result.body.user?.role === "admin") setAuthorized(true);
+        if (user?.role === "admin") setAuthorized(true);
         else navigate("/");
       })
       .catch(() => mounted && navigate("/"))
