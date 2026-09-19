@@ -1,4 +1,4 @@
-import { edgeApiUrl, requireSupabase, supabase } from "./supabase";
+import { cleanPublishableKey, edgeApiUrl, requireSupabase, supabase } from "./supabase";
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
 
@@ -20,7 +20,7 @@ export async function apiFetch(input: RequestInfo | URL, init: RequestInit = {})
   if (error) throw error;
 
   const headers = new Headers(init.headers);
-  const publishableKey = String(
+  const publishableKey = cleanPublishableKey || String(
     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
     || import.meta.env.VITE_SUPABASE_ANON_KEY
     || "",

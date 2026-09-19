@@ -8,6 +8,10 @@ interface VectorOpsWindow extends Window {
   };
 }
 
+const DEFAULT_SUPABASE_URL = "https://yhupkwcdnnclayogfhiv.supabase.co";
+const DEFAULT_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_wB8ql1D0nO1ffzeHPLZBZg_RP9EUtTs";
+const DEFAULT_VECTOROPS_API_URL = "https://yhupkwcdnnclayogfhiv.supabase.co/functions/v1/vectorops-api";
+
 const isPlaceholder = (val?: string) =>
   !val ||
   val.includes("your-project") ||
@@ -20,25 +24,31 @@ const runtimeWindowConfig = win?.__VECTOROPS_SUPABASE__;
 
 const rawSupabaseUrl =
   (!isPlaceholder(runtimeWindowConfig?.url) ? runtimeWindowConfig?.url : undefined) ||
-  import.meta.env.VITE_SUPABASE_URL ||
-  (import.meta.env as Record<string, string | undefined>).SUPABASE_URL;
+  (!isPlaceholder(import.meta.env.VITE_SUPABASE_URL) ? import.meta.env.VITE_SUPABASE_URL : undefined) ||
+  (!isPlaceholder((import.meta.env as Record<string, string | undefined>).SUPABASE_URL) ? (import.meta.env as Record<string, string | undefined>).SUPABASE_URL : undefined) ||
+  DEFAULT_SUPABASE_URL;
 
 const rawPublishableKey =
   (!isPlaceholder(runtimeWindowConfig?.anonKey) ? runtimeWindowConfig?.anonKey : undefined) ||
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  (import.meta.env as Record<string, string | undefined>).SUPABASE_PUBLISHABLE_KEY ||
-  (import.meta.env as Record<string, string | undefined>).VITE_SUPABASE_ANON_KEY ||
-  (import.meta.env as Record<string, string | undefined>).SUPABASE_ANON_KEY;
+  (!isPlaceholder(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) ? import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY : undefined) ||
+  (!isPlaceholder((import.meta.env as Record<string, string | undefined>).SUPABASE_PUBLISHABLE_KEY) ? (import.meta.env as Record<string, string | undefined>).SUPABASE_PUBLISHABLE_KEY : undefined) ||
+  (!isPlaceholder((import.meta.env as Record<string, string | undefined>).VITE_SUPABASE_ANON_KEY) ? (import.meta.env as Record<string, string | undefined>).VITE_SUPABASE_ANON_KEY : undefined) ||
+  (!isPlaceholder((import.meta.env as Record<string, string | undefined>).SUPABASE_ANON_KEY) ? (import.meta.env as Record<string, string | undefined>).SUPABASE_ANON_KEY : undefined) ||
+  DEFAULT_SUPABASE_PUBLISHABLE_KEY;
 
-const cleanSupabaseUrl = rawSupabaseUrl?.trim().replace(/\/+$/, "");
-const cleanPublishableKey = rawPublishableKey?.trim();
+export const cleanSupabaseUrl = rawSupabaseUrl?.trim().replace(/\/+$/, "");
+export const cleanPublishableKey = rawPublishableKey?.trim();
 
 export const supabaseConfigured =
   !isPlaceholder(cleanSupabaseUrl) && !isPlaceholder(cleanPublishableKey);
 
+const rawEdgeApiUrl =
+  (!isPlaceholder(import.meta.env.VITE_VECTOROPS_API_URL) ? import.meta.env.VITE_VECTOROPS_API_URL : undefined) ||
+  DEFAULT_VECTOROPS_API_URL;
+
 export const edgeApiUrl =
-  supabaseConfigured && !isPlaceholder(import.meta.env.VITE_VECTOROPS_API_URL)
-    ? String(import.meta.env.VITE_VECTOROPS_API_URL || "").trim().replace(/\/+$/, "")
+  supabaseConfigured && !isPlaceholder(rawEdgeApiUrl)
+    ? String(rawEdgeApiUrl).trim().replace(/\/+$/, "")
     : "";
 
 export const supabase: SupabaseClient | null = supabaseConfigured
