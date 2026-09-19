@@ -213,11 +213,11 @@ export function ClientsView({ onAddClient, selectedClient: initialSelected, onCl
           <div className="eyebrow">
             <span className="signal" /> VECTOROPS / BUSINESS PLANE
           </div>
-          <h1>Client Directory & Tenancy</h1>
-          <p>Multi-tenant accounts, subscription retainers, automation workloads, and isolated client portals.</p>
+          <h1>Business Directory & Tenancy</h1>
+          <p>Multi-tenant business accounts, subscription retainers, automation workloads, and isolated business portals.</p>
         </div>
         <button className="primary-cta" onClick={onAddClient}>
-          <Plus size={16} /> Onboard New Client
+          <Plus size={16} /> Onboard New Business
         </button>
       </div>
 

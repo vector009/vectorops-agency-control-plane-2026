@@ -149,10 +149,10 @@ export function ClientPortal() {
         const user = await signInForRole(email, password, "client");
         if (user?.slug !== slug) {
           await signOut();
-          setAuthError("This account does not have access to this client portal.");
+          setAuthError("This account does not have access to this business portal.");
           return;
         }
-        toast.success("Welcome to your client portal!");
+        toast.success("Welcome to your business portal!");
         await checkPortalSession();
         return;
       }
@@ -164,7 +164,7 @@ export function ClientPortal() {
       });
       const data = await res.json();
       if (data.ok) {
-        toast.success(`Welcome to your client portal!`);
+        toast.success(`Welcome to your business portal!`);
         checkPortalSession();
       } else {
         setAuthError(data.error || "Invalid email or password.");
@@ -179,7 +179,7 @@ export function ClientPortal() {
       await signOut();
       setAuthenticated(false);
       setPortalData(null);
-      toast.success("Logged out of client portal.");
+      toast.success("Logged out of business portal.");
     } catch {
       toast.error("Logout error.");
     }
@@ -291,9 +291,9 @@ export function ClientPortal() {
   if (loading) {
     return (
       <div className="portal-shell" style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-        <div className="panel neumorph" style={{ padding: "30px", textAlign: "center" }}>
+        <div className="panel neumorph" style={{ padding: "30px", textAlign: "center", border: "1px solid rgba(56, 189, 248, 0.25)" }}>
           <div className="signal" style={{ margin: "0 auto 12px" }} />
-          Loading client portal...
+          Loading business portal...
         </div>
       </div>
     );
@@ -303,26 +303,26 @@ export function ClientPortal() {
   if (!authenticated || !portalData) {
     return (
       <div className="portal-login-screen">
-        <div className="portal-login-card panel neumorph" style={{ maxWidth: "420px", width: "100%" }}>
+        <div className="portal-login-card panel neumorph" style={{ maxWidth: "420px", width: "100%", border: "1px solid rgba(168, 85, 247, 0.35)", boxShadow: "0 20px 60px rgba(0,0,0,0.8), 0 0 30px rgba(168,85,247,0.2)" }}>
           <div style={{ textAlign: "center", marginBottom: "20px" }}>
-            <div className="eyebrow" style={{ justifyContent: "center" }}>
-              <span className="signal" /> VECTOROPS CLIENT PORTAL
+            <div className="eyebrow" style={{ justifyContent: "center", color: "#c084fc" }}>
+              <span className="signal" /> VECTOROPS BUSINESS PORTAL
             </div>
-            <h2 style={{ margin: "6px 0 2px", fontSize: "20px" }}>CLIENT PORTAL LOGIN</h2>
+            <h2 style={{ margin: "8px 0 4px", fontSize: "22px", fontWeight: 800, color: "#fff" }}>LOG IN AS BUSINESS</h2>
             <p style={{ fontSize: "12px", color: "var(--muted)", margin: 0 }}>
-              Authenticated access to <code style={{ color: "var(--blue)" }}>/portal/{slug}</code>
+              Authenticated access to <code style={{ color: "#00f0ff" }}>/portal/{slug}</code>
             </p>
           </div>
 
           <form onSubmit={handleLogin}>
             <div className="form-group">
-              <label>Email</label>
+              <label>Business Email</label>
               <input
                 type="email"
                 autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="client@company.com"
+                placeholder="business@company.com"
                 required
                 autoFocus
               />
@@ -341,7 +341,7 @@ export function ClientPortal() {
             </div>
 
             {authError && (
-              <div style={{ color: "#ef4444", fontSize: "11px", marginBottom: "12px", textAlign: "center" }}>
+              <div style={{ color: "#f43f5e", fontSize: "11px", marginBottom: "12px", textAlign: "center", background: "rgba(244, 63, 94, 0.12)", padding: "8px 12px", borderRadius: "8px", border: "1px solid rgba(244, 63, 94, 0.3)" }}>
                 {authError}
               </div>
             )}
@@ -351,13 +351,13 @@ export function ClientPortal() {
             </div>
 
             <button type="submit" className="primary-cta" style={{ width: "100%", justifyContent: "center" }}>
-              <Lock size={15} /> LOGIN
+              <Lock size={15} /> LOG IN AS BUSINESS
             </button>
           </form>
 
           <div style={{ marginTop: "20px", textAlign: "center", borderTop: "1px solid var(--line)", paddingTop: "14px" }}>
             <a href="/" style={{ color: "var(--muted)", fontSize: "11px", textDecoration: "none" }}>
-              ← Return to Agency Control Plane
+              ← Return to Operator Command Center
             </a>
           </div>
         </div>

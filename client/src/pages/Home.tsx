@@ -47,7 +47,7 @@ import { apiFetch as fetch, getCurrentUser, signInForRole, signOut } from "@/lib
 
 const nav = [
   ["Overview", LayoutDashboard],
-  ["Clients", Users],
+  ["Businesses", Users],
   ["Automations", Zap],
   ["Money", CircleDollarSign],
   ["Calendar", CalendarDays],
@@ -99,18 +99,18 @@ export function Home({ onAdmin, onClient }: { onAdmin: () => void; onClient: () 
         <Brand />
         <div className="entry-actions">
           <span className="eyebrow hide-mobile">
-            <StatusDot /> SYSTEM READY
+            <StatusDot /> SYSTEM READY · 3-PLANE ACTIVE
           </span>
           <ThemeToggle />
-          <button className="text-button" onClick={onClient}>
-            Client portal <ArrowUpRight size={15} />
+          <button className="text-button" onClick={onClient} style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            Business portal <ArrowUpRight size={15} />
           </button>
         </div>
       </header>
       <main className="entry-main">
         <section className="hero-copy">
           <div className="eyebrow">
-            <span className="signal" /> CONTROL PLANE / 01
+            <span className="signal" /> CONTROL PLANE / 01 · ENTERPRISE AGENT OS
           </div>
           <h1>
             Your agency,
@@ -118,14 +118,14 @@ export function Home({ onAdmin, onClient }: { onAdmin: () => void; onClient: () 
             <em>under one</em> operating system.
           </h1>
           <p className="hero-lede">
-            Manage the business plane, automation control plane, and execution health from one precise command center.
+            Manage the business plane, automation control plane, and execution health from one unified command center.
           </p>
           <div className="hero-actions">
-            <Button className="primary-cta" onClick={onAdmin}>
-              <LockKeyhole size={16} /> Enter admin console <ChevronRight size={16} />
+            <Button className="primary-cta" onClick={onAdmin} id="btn-login-operator">
+              <LockKeyhole size={16} /> Log in as operator <ChevronRight size={16} />
             </Button>
-            <button className="secondary-cta" onClick={onClient}>
-              Client login <ArrowUpRight size={16} />
+            <button className="secondary-cta" onClick={onClient} id="btn-login-business">
+              Log in as business <ArrowUpRight size={16} />
             </button>
           </div>
           <div className="trust-row">
@@ -139,9 +139,9 @@ export function Home({ onAdmin, onClient }: { onAdmin: () => void; onClient: () 
         </section>
         <section className="system-visual">
           <div className="visual-header">
-            <span>VECTOROPS / THREE-PLANE SYSTEM MAP</span>
+            <span>VECTOROPS / THREE-PLANE ARCHITECTURE</span>
             <span className="live-pill">
-              <StatusDot /> LIVE SURFACE
+              <StatusDot /> OPERATIONAL
             </span>
           </div>
           <div className="orbit">
@@ -152,34 +152,34 @@ export function Home({ onAdmin, onClient }: { onAdmin: () => void; onClient: () 
                 <Command size={25} />
                 <span>OPS</span>
               </div>
-              <small>COMMAND CENTER</small>
+              <small>OPERATOR CORE</small>
             </div>
             {[
               ["BUSINESS", "01", "top"],
               ["CONTROL", "02", "right"],
               ["EXECUTION", "03", "bottom"],
-              ["CLIENT", "04", "left"],
+              ["BUSINESS PORTAL", "04", "left"],
             ].map(([name, no, pos]) => (
               <div className={`node node-${pos}`} key={name}>
                 <span className="node-no">{no}</span>
                 <strong>{name}</strong>
                 <small>
-                  <StatusDot /> managed plane
+                  <StatusDot /> active plane
                 </small>
               </div>
             ))}
           </div>
           <div className="visual-footer">
             <span>
-              <span className="metric-line" /> BUSINESS / CONTROL / EXECUTION
+              <span className="metric-line" /> BUSINESS · CONTROL · EXECUTION
             </span>
-            <span>01 — 04</span>
+            <span>01 — 04 · LIVE TELEMETRY</span>
           </div>
         </section>
       </main>
       <footer className="entry-footer">
         <span>© 2026 VectorOps Control Plane</span>
-        <span>Three-plane architecture with Section 51 partial payments and Section 54 safe churn.</span>
+        <span>Three-plane architecture with real-time telemetry, n8n orchestration, and isolated business portals.</span>
         <span className="footer-links">
           <a href="#security">Security</a>
           <a href="#status">Status</a>
@@ -195,15 +195,17 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const isOperator = mode === "admin";
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     try {
       if (supabaseConfigured || edgeApiUrl) {
         const user = await signInForRole(email, password, mode);
-        toast.success(mode === "admin" ? "Admin authentication confirmed." : "Client authentication confirmed.");
+        toast.success(isOperator ? "Operator authentication confirmed." : "Business authentication confirmed.");
         onClose();
-        navigate(mode === "admin" ? "/admin" : `/portal/${user?.slug}`);
+        navigate(isOperator ? "/admin" : `/portal/${user?.slug}`);
         return;
       }
       const response = await fetch(`/api/auth/${mode}`, {
@@ -217,9 +219,9 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
         toast.error(result.error || "Invalid email or password.");
         return;
       }
-      toast.success(mode === "admin" ? "Admin authentication confirmed." : "Client authentication confirmed.");
+      toast.success(isOperator ? "Operator authentication confirmed." : "Business authentication confirmed.");
       onClose();
-      navigate(mode === "admin" ? "/admin" : `/portal/${result.slug}`);
+      navigate(isOperator ? "/admin" : `/portal/${result.slug}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Authentication service unavailable.";
       toast.error(message);
@@ -230,21 +232,21 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
-      <div className="login-panel panel neumorph" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="login-panel panel neumorph" onMouseDown={(e) => e.stopPropagation()} style={{ border: isOperator ? "1px solid rgba(0, 240, 255, 0.35)" : "1px solid rgba(168, 85, 247, 0.35)", boxShadow: isOperator ? "0 20px 60px rgba(0,0,0,0.8), 0 0 30px rgba(0,240,255,0.2)" : "0 20px 60px rgba(0,0,0,0.8), 0 0 30px rgba(168,85,247,0.2)" }}>
         <button className="close-button" onClick={onClose} aria-label="Close">
           <X size={18} />
         </button>
-        <div className="login-symbol">
+        <div className="login-symbol" style={{ background: isOperator ? "linear-gradient(135deg, rgba(0, 240, 255, 0.2), rgba(37, 99, 235, 0.2))" : "linear-gradient(135deg, rgba(168, 85, 247, 0.2), rgba(236, 72, 153, 0.2))", color: isOperator ? "#00f0ff" : "#c084fc", border: `1px solid ${isOperator ? "rgba(0, 240, 255, 0.4)" : "rgba(168, 85, 247, 0.4)"}` }}>
           <LockKeyhole size={21} />
         </div>
-        <div className="eyebrow">
-          <span className="signal" /> {mode === "admin" ? "OPERATOR AUTHENTICATION" : "CLIENT PORTAL AUTHENTICATION"}
+        <div className="eyebrow" style={{ color: isOperator ? "#00f0ff" : "#c084fc" }}>
+          <span className="signal" /> {isOperator ? "OPERATOR ACCESS" : "BUSINESS ACCESS"}
         </div>
-        <h2>{mode === "admin" ? "LOGIN AS ADMIN" : "CLIENT PORTAL LOGIN"}</h2>
+        <h2>{isOperator ? "LOG IN AS OPERATOR" : "LOG IN AS BUSINESS"}</h2>
         <p>
-          {mode === "admin"
-            ? "Sign in with your verified administrator credentials."
-            : "Sign in with your tenant account email and password."}
+          {isOperator
+            ? "Sign in with your verified operator credentials."
+            : "Sign in with your business account email and password."}
         </p>
         <form onSubmit={submit}>
           <label>
@@ -254,7 +256,7 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
               onChange={(e) => setEmail(e.target.value)}
               type="email"
               autoComplete="email"
-              placeholder={mode === "admin" ? "admin@vectorops.ai" : "sarah@apexdental.com"}
+              placeholder={isOperator ? "operator@vectorops.ai" : "sarah@apexdental.com"}
               required
               autoFocus
             />
@@ -274,12 +276,12 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
             <a className="text-button" href={`/auth/forgot?mode=${mode}`}>Forgot password?</a>
           </div>
           <Button className="primary-cta full" type="submit" disabled={busy} style={{ marginTop: "12px" }}>
-            {busy ? "Authenticating..." : "LOGIN"}
+            {busy ? "Authenticating..." : (isOperator ? "LOG IN AS OPERATOR" : "LOG IN AS BUSINESS")}
             <ChevronRight size={16} />
           </Button>
         </form>
         <div className="login-note">
-          <ShieldCheck size={15} /> Signed sessions and role-based access control.
+          <ShieldCheck size={15} /> Signed sessions with role-based cryptographic verification.
         </div>
       </div>
     </div>
@@ -385,13 +387,16 @@ export function CommandCenter({ onLogout }: { onLogout: () => void }) {
             <Menu size={19} />
           </button>
           <div className="crumb">
-            <span>Agency workspace</span>
+            <span>Operator Console</span>
             <ChevronRight size={14} />
-            <strong>{active}</strong>
+            <strong style={{ color: "#00f0ff" }}>{active}</strong>
           </div>
-          <div className="top-actions">
+          <div className="top-actions" style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <span className="live-pill hide-mobile" style={{ fontSize: "10px", padding: "4px 10px", background: "rgba(0, 240, 255, 0.1)", border: "1px solid rgba(0, 240, 255, 0.3)", color: "#00f0ff", borderRadius: "8px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              <StatusDot tone="green" /> 3-PLANE ACTIVE
+            </span>
             <ThemeToggle />
-            <div className="avatar">VO</div>
+            <div className="avatar" title="Master Operator" style={{ background: "linear-gradient(135deg, #00d2ff, #2563eb)", color: "#fff", fontWeight: 700 }}>OP</div>
           </div>
         </header>
 
@@ -402,12 +407,12 @@ export function CommandCenter({ onLogout }: { onLogout: () => void }) {
               onAddClient={() => setShowOnboarding(true)}
               onOpenClient={(client) => {
                 setSelectedClient(client);
-                setActive("Clients");
+                setActive("Businesses");
               }}
             />
           )}
 
-          {active === "Clients" && (
+          {(active === "Businesses" || active === "Clients") && (
             <ClientsView
               onAddClient={() => setShowOnboarding(true)}
               selectedClient={selectedClient}

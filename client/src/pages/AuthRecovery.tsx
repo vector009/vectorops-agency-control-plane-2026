@@ -51,7 +51,7 @@ export function PasswordRecoveryRequest() {
         <div className="login-symbol"><KeyRound size={21} /></div>
         <div className="eyebrow"><span className="signal" /> SUPABASE AUTH RECOVERY</div>
         <h1>Reset your password</h1>
-        <p>Enter the email for your {mode === "admin" ? "administrator" : "client portal"} account. For security, the response is the same whether the account exists or not.</p>
+        <p>Enter the email for your {mode === "admin" ? "operator" : "business portal"} account. For security, the response is the same whether the account exists or not.</p>
         {success ? (
           <div className="auth-state success"><CheckCircle2 size={18} /><div><strong>Check your email</strong><span>{success}</span></div></div>
         ) : (
