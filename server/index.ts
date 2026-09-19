@@ -7,6 +7,15 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { store } from "./store";
 import { N8nControlPlane, startN8nControlScheduler, type N8nWorkflowDefinition } from "./n8n-control";
 
+if (typeof (process as any).loadEnvFile === "function") {
+  try {
+    (process as any).loadEnvFile(path.resolve(process.cwd(), ".env"));
+  } catch {}
+  try {
+    (process as any).loadEnvFile(path.resolve(process.cwd(), ".env.local"));
+  } catch {}
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const SESSION_COOKIE = "vectorops_session";
@@ -36,7 +45,7 @@ type Profile = {
 function config() {
   return {
     url: process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL,
-    anonKey: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
+    anonKey: process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY,
     serviceRoleKey: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY,
   };
 }
@@ -2025,6 +2034,21 @@ async function healthCheck(_request: Request, response: Response) {
   }
 }
 
+function getPublicSupabaseConfig() {
+  const cfg = config();
+  const validUrl = !isPlaceholder(cfg.url) ? cfg.url : "";
+  const validKey = !isPlaceholder(cfg.anonKey) ? cfg.anonKey : "";
+  return {
+    url: validUrl,
+    anonKey: validKey,
+    configured: Boolean(validUrl && validKey),
+  };
+}
+
+function supabasePublicConfig(_request: Request, response: Response) {
+  return response.json(getPublicSupabaseConfig());
+}
+
 // --------------------------------------------------------------------------
 // EXPRESS APP CONFIGURATION
 // --------------------------------------------------------------------------
@@ -2062,6 +2086,7 @@ export function createApiApp() {
 
   // Public & Authentication
   app.get("/api/health", healthCheck);
+  app.get("/api/config/supabase", supabasePublicConfig);
   app.post("/api/auth/admin", adminLogin);
   app.post("/api/auth/client", clientLogin);
   app.post("/api/auth/recovery/request", requestPasswordRecovery);
@@ -2136,6 +2161,11 @@ export async function createApp() {
           const indexPath = path.resolve(process.cwd(), "client", "index.html");
           let html = await (await import("fs/promises")).readFile(indexPath, "utf-8");
           html = await vite.transformIndexHtml(url, html);
+          const publicCfg = getPublicSupabaseConfig();
+          const configScript = `<script>window.__VECTOROPS_SUPABASE__ = ${JSON.stringify(publicCfg)};</script>`;
+          html = html.includes("<head>")
+            ? html.replace("<head>", `<head>\n    ${configScript}`)
+            : `${configScript}${html}`;
           res.status(200).set({ "Content-Type": "text/html" }).end(html);
         } catch (e) {
           next(e);

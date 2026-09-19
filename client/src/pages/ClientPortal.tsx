@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, type CSSProperties } from "react";
 import { useRoute } from "wouter";
 import {
+  AlertTriangle,
   ShieldCheck,
   Zap,
   CircleDollarSign,
@@ -145,30 +146,18 @@ export function ClientPortal() {
     e.preventDefault();
     setAuthError("");
     try {
-      if (supabaseConfigured || edgeApiUrl) {
-        const user = await signInForRole(email, password, "client");
-        if (user?.slug !== slug) {
-          await signOut();
-          setAuthError("This account does not have access to this business portal.");
-          return;
-        }
-        toast.success("Welcome to your business portal!");
-        await checkPortalSession();
+      if (!supabaseConfigured) {
+        setAuthError("Supabase frontend configuration is missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in Settings.");
         return;
       }
-      const res = await fetch("/api/auth/client", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (data.ok) {
-        toast.success(`Welcome to your business portal!`);
-        checkPortalSession();
-      } else {
-        setAuthError(data.error || "Invalid email or password.");
+      const user = await signInForRole(email, password, "client");
+      if (user?.slug !== slug) {
+        await signOut();
+        setAuthError("This account does not have access to this business portal.");
+        return;
       }
+      toast.success("Welcome to your business portal!");
+      await checkPortalSession();
     } catch (err: unknown) {
       setAuthError(err instanceof Error ? err.message : "Network error during login.");
     }
@@ -309,9 +298,22 @@ export function ClientPortal() {
               <span className="signal" /> VECTOROPS BUSINESS PORTAL
             </div>
             <h2 style={{ margin: "8px 0 4px", fontSize: "22px", fontWeight: 800, color: "#fff" }}>LOG IN AS BUSINESS</h2>
-            <p style={{ fontSize: "12px", color: "var(--muted)", margin: 0 }}>
+            <p style={{ fontSize: "12px", color: "var(--muted)", margin: "0 0 12px" }}>
               Authenticated access to <code style={{ color: "#00f0ff" }}>/portal/{slug}</code>
             </p>
+
+            {supabaseConfigured ? (
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "100px", background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", color: "#34d399", fontSize: "11px", fontWeight: 600, margin: "0 auto 14px" }}>
+                <CheckCircle2 size={12} /> Supabase Auth Connected
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "10px 12px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.3)", color: "#fbbf24", fontSize: "11px", lineHeight: 1.4, margin: "0 0 14px", textAlign: "left" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600 }}>
+                  <AlertTriangle size={13} /> Supabase Configuration Required
+                </div>
+                <span>Set <code>SUPABASE_URL</code> and <code>SUPABASE_PUBLISHABLE_KEY</code> in project Settings (or in a <code>.env</code> file), and click Save.</span>
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleLogin}>

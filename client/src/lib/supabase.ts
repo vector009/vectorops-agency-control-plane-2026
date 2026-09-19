@@ -1,10 +1,12 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabasePublishableKey = (
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY
-  || import.meta.env.VITE_SUPABASE_ANON_KEY
-) as string | undefined;
+interface VectorOpsWindow extends Window {
+  __VECTOROPS_SUPABASE__?: {
+    url?: string;
+    anonKey?: string;
+    configured?: boolean;
+  };
+}
 
 const isPlaceholder = (val?: string) =>
   !val ||
@@ -13,17 +15,33 @@ const isPlaceholder = (val?: string) =>
   val.includes("your-key") ||
   val.includes("example.com");
 
-const cleanSupabaseUrl = supabaseUrl?.trim().replace(/\/+$/, "");
-const cleanPublishableKey = supabasePublishableKey?.trim();
+const win = typeof window !== "undefined" ? (window as unknown as VectorOpsWindow) : undefined;
+const runtimeWindowConfig = win?.__VECTOROPS_SUPABASE__;
 
-export const edgeApiUrl = isPlaceholder(import.meta.env.VITE_VECTOROPS_API_URL)
-  ? ""
-  : String(import.meta.env.VITE_VECTOROPS_API_URL || "").trim().replace(/\/+$/, "");
+const rawSupabaseUrl =
+  (!isPlaceholder(runtimeWindowConfig?.url) ? runtimeWindowConfig?.url : undefined) ||
+  import.meta.env.VITE_SUPABASE_URL ||
+  (import.meta.env as Record<string, string | undefined>).SUPABASE_URL;
+
+const rawPublishableKey =
+  (!isPlaceholder(runtimeWindowConfig?.anonKey) ? runtimeWindowConfig?.anonKey : undefined) ||
+  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  (import.meta.env as Record<string, string | undefined>).SUPABASE_PUBLISHABLE_KEY ||
+  (import.meta.env as Record<string, string | undefined>).VITE_SUPABASE_ANON_KEY ||
+  (import.meta.env as Record<string, string | undefined>).SUPABASE_ANON_KEY;
+
+const cleanSupabaseUrl = rawSupabaseUrl?.trim().replace(/\/+$/, "");
+const cleanPublishableKey = rawPublishableKey?.trim();
 
 export const supabaseConfigured =
   !isPlaceholder(cleanSupabaseUrl) && !isPlaceholder(cleanPublishableKey);
 
-export const supabase = supabaseConfigured
+export const edgeApiUrl =
+  supabaseConfigured && !isPlaceholder(import.meta.env.VITE_VECTOROPS_API_URL)
+    ? String(import.meta.env.VITE_VECTOROPS_API_URL || "").trim().replace(/\/+$/, "")
+    : "";
+
+export const supabase: SupabaseClient | null = supabaseConfigured
   ? createClient(cleanSupabaseUrl!, cleanPublishableKey!, {
       auth: {
         persistSession: true,
@@ -36,7 +54,7 @@ export const supabase = supabaseConfigured
     })
   : null;
 
-export function requireSupabase() {
-  if (!supabase) throw new Error("Supabase frontend configuration is missing.");
+export function requireSupabase(): SupabaseClient {
+  if (!supabase) throw new Error("Supabase frontend configuration is missing. Please set your Supabase URL and Publishable Key in Settings.");
   return supabase;
 }

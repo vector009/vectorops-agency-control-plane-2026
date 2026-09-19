@@ -22,7 +22,7 @@ export function PasswordRecoveryRequest() {
     setError("");
     setSuccess("");
     try {
-      if (supabaseConfigured || edgeApiUrl) {
+      if (supabaseConfigured) {
         const redirectTo = `${window.location.origin}/auth/reset?mode=${mode}`;
         const result = await requireSupabase().auth.resetPasswordForEmail(email.trim().toLowerCase(), { redirectTo });
         if (result.error) throw new Error("Unable to send a recovery email right now. Please wait and try again.");
@@ -92,7 +92,7 @@ export function PasswordReset() {
   const [complete, setComplete] = useState(false);
 
   useEffect(() => {
-    if ((!edgeApiUrl && !supabaseConfigured) || !validLink) return;
+    if (!supabaseConfigured || !validLink) return;
     let active = true;
     const establishRecoverySession = async () => {
       try {
@@ -119,7 +119,7 @@ export function PasswordReset() {
     }
     setBusy(true);
     try {
-      if (supabaseConfigured || edgeApiUrl) {
+      if (supabaseConfigured) {
         if (!sessionReady) throw new Error("This recovery link is invalid or expired. Request a new one.");
         const auth = requireSupabase().auth;
         const result = await auth.updateUser({ password });

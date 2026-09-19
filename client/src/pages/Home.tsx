@@ -5,9 +5,11 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
   Activity,
+  AlertTriangle,
   ArrowUpRight,
   CalendarDays,
   Check,
+  CheckCircle2,
   ChevronRight,
   CircleDollarSign,
   Command,
@@ -201,27 +203,14 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
     e.preventDefault();
     setBusy(true);
     try {
-      if (supabaseConfigured || edgeApiUrl) {
-        const user = await signInForRole(email, password, mode);
-        toast.success(isOperator ? "Operator authentication confirmed." : "Business authentication confirmed.");
-        onClose();
-        navigate(isOperator ? "/admin" : `/portal/${user?.slug}`);
+      if (!supabaseConfigured) {
+        toast.error("Supabase frontend configuration is missing. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in Settings.");
         return;
       }
-      const response = await fetch(`/api/auth/${mode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
-      const result = (await response.json()) as { ok?: boolean; error?: string; slug?: string };
-      if (!response.ok || !result.ok) {
-        toast.error(result.error || "Invalid email or password.");
-        return;
-      }
+      const user = await signInForRole(email, password, mode);
       toast.success(isOperator ? "Operator authentication confirmed." : "Business authentication confirmed.");
       onClose();
-      navigate(isOperator ? "/admin" : `/portal/${result.slug}`);
+      navigate(isOperator ? "/admin" : `/portal/${user?.slug || ""}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Authentication service unavailable.";
       toast.error(message);
@@ -248,6 +237,20 @@ export function LoginPanel({ mode, onClose }: { mode: "admin" | "client"; onClos
             ? "Sign in with your verified operator credentials."
             : "Sign in with your business account email and password."}
         </p>
+
+        {supabaseConfigured ? (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "4px 10px", borderRadius: "100px", background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.3)", color: "#34d399", fontSize: "11px", fontWeight: 600, marginBottom: "16px" }}>
+            <CheckCircle2 size={12} /> Supabase Auth Connected
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "10px 12px", borderRadius: "8px", background: "rgba(245, 158, 11, 0.12)", border: "1px solid rgba(245, 158, 11, 0.3)", color: "#fbbf24", fontSize: "11px", lineHeight: 1.4, marginBottom: "16px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", fontWeight: 600 }}>
+              <AlertTriangle size={13} /> Supabase Configuration Required
+            </div>
+            <span>Set <code>SUPABASE_URL</code> and <code>SUPABASE_PUBLISHABLE_KEY</code> in project Settings (or in a <code>.env</code> file), and click Save.</span>
+          </div>
+        )}
+
         <form onSubmit={submit}>
           <label>
             Email
